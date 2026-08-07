@@ -17,9 +17,6 @@ It demultiplexes single-end and paired-end FASTQ using a **sample barcode table*
 - Gzip output without shelling out to external tools
 - Summary TSV + stderr report
 
-> **Note:** SeqMux does **not** accept Ultraplex-style barcode CSV  
-> (`NNNATGNN:sample,3p:name`). Use the SeqMux sample table format below.
-
 ## Install
 
 ```bash
@@ -129,7 +126,7 @@ After assignment (unless `--keep-barcodes`):
 - SE dual: trim Barcode1 from 5′ and Barcode2 from 3′
 - Single: trim Barcode1 from 5′
 
-Mismatch thresholds: `--mismatches-1` / `--mismatches-2` (aliases: `--mismatches-5` / `--mismatches-3` for muscle memory). Best unique score wins; ties go to `unassigned`.
+Mismatch thresholds: `--mismatches-1` / `--mismatches-2`. Best unique score wins; ties go to `unassigned`.
 
 ## Common options
 
@@ -177,7 +174,6 @@ Example: sample `I464469-A1` → `seqmux_I464469-A1_R1.fastq.gz`.
 
 ## Design notes
 
-- No Ultraplex-style exponential reference dictionary (`5^L`)
 - Pipeline: `Reader → bounded chunks → N workers → ordered writer`
 - Workers never open output files; writer alone finishes gzip streams
 - No temporary `_tmp_thread_*` files and no final `cat` merge
@@ -197,4 +193,4 @@ MIT — see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
 
 ## Acknowledgements
 
-Pipeline and trimming ideas were informed by demultiplexing practice in the NGS community, including [Ultraplex](https://github.com/ulelab/ultraplex). SeqMux uses its **own sample table format** and does not implement Ultraplex CSV compatibility.
+Pipeline and trimming ideas were informed by demultiplexing practice in the NGS community, including Ultraplex.

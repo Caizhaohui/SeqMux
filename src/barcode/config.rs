@@ -1,49 +1,68 @@
 use crate::error::{AppError, Result};
-use crate::util::{revcomp, sanitize_filename_component};
+use crate::util::sanitize_filename_component;
 use std::collections::HashSet;
 use std::path::Path;
 
-/// Demultiplex operating mode.
+/// Demultiplex operating mode derived from the sample table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DemuxMode {
-    FivePrime,
-    FiveAndThreePrime,
-    ThreePrimeOnly,
+    /// Only Barcode1 present: match at R1 (or SE) 5' end.
+    SingleBarcode,
+    /// Barcode1 + Barcode2: PE → R1/R2 5'; SE → R1 5' + R1 3'.
+    DualBarcode,
 }
 
-/// Compiled 5' barcode pattern.
+/// Compiled barcode pattern (supports optional `N` UMI bases).
 #[derive(Debug, Clone)]
-pub struct CompiledFivePrime {
-    pub id: usize,
+pub struct CompiledBarcode {
     pub raw: Vec<u8>,
     pub pattern_len: usize,
     pub informative_positions: Vec<usize>,
     pub expected_bases: Vec<u8>,
     pub umi_positions: Vec<usize>,
-    pub sample_name: Option<String>,
-    pub linked_three_prime: Vec<CompiledThreePrime>,
 }
 
-/// Compiled 3' barcode pattern (positions from read end).
+impl CompiledBarcode {
+    pub fn compile(raw: Vec<u8>) -> Result<Self> {
+        let mut informative_positions = Vec::new();
+        let mut expected_bases = Vec::new();
+        let mut umi_positions = Vec::new();
+        for (i, &b) in raw.iter().enumerate() {
+            if b == b'N' {
+                umi_positions.push(i);
+            } else {
+                informative_positions.push(i);
+                expected_bases.push(b);
+            }
+        }
+        if expected_bases.is_empty() {
+            return Err(AppError::BarcodeConfig(
+                "barcode has no informative (non-N) bases".into(),
+            ));
+        }
+        Ok(Self {
+            pattern_len: raw.len(),
+            informative_positions,
+            expected_bases,
+            umi_positions,
+            raw,
+        })
+    }
+}
+
+/// One sample row from the barcode table.
 #[derive(Debug, Clone)]
-pub struct CompiledThreePrime {
+pub struct SampleEntry {
     pub id: usize,
-    pub raw: Vec<u8>,
-    pub pattern_len: usize,
-    /// Offsets from the 3' end: 0 = last base.
-    pub informative_offsets_from_end: Vec<usize>,
-    pub expected_bases: Vec<u8>,
-    pub umi_offsets_from_end: Vec<usize>,
-    pub sample_name: Option<String>,
+    pub name: String,
+    pub barcode1: CompiledBarcode,
+    pub barcode2: Option<CompiledBarcode>,
 }
 
 /// Unique sample output key.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SampleKey {
     Named(String),
-    FivePrime { barcode: String },
-    Combined { five: String, three: String },
-    ThreePrime { barcode: String },
     Unassigned,
 }
 
@@ -51,17 +70,6 @@ impl SampleKey {
     pub fn label(&self) -> String {
         match self {
             SampleKey::Named(s) => sanitize_filename_component(s),
-            SampleKey::FivePrime { barcode } => {
-                format!("5bc_{}", sanitize_filename_component(barcode))
-            }
-            SampleKey::Combined { five, three } => format!(
-                "5bc_{}_3bc_{}",
-                sanitize_filename_component(five),
-                sanitize_filename_component(three)
-            ),
-            SampleKey::ThreePrime { barcode } => {
-                format!("3bc_{}", sanitize_filename_component(barcode))
-            }
             SampleKey::Unassigned => "unassigned".to_string(),
         }
     }
@@ -70,10 +78,12 @@ impl SampleKey {
 /// Full barcode configuration after CSV parsing.
 #[derive(Debug, Clone)]
 pub struct BarcodeConfig {
-    pub five_prime: Vec<CompiledFivePrime>,
+    pub samples: Vec<SampleEntry>,
     pub mode: DemuxMode,
-    pub mismatches_5: usize,
-    pub mismatches_3: usize,
+    /// Allowed mismatches for Barcode1.
+    pub mismatches_1: usize,
+    /// Allowed mismatches for Barcode2.
+    pub mismatches_2: usize,
 }
 
 /// TSO pattern: N → UMI, I → trim only.
@@ -113,7 +123,7 @@ impl TsoPattern {
 }
 
 fn validate_bases(s: &str) -> Result<Vec<u8>> {
-    let upper = s.to_ascii_uppercase();
+    let upper = s.trim().to_ascii_uppercase();
     let bytes = upper.into_bytes();
     for &b in &bytes {
         if !matches!(b, b'A' | b'C' | b'G' | b'T' | b'N') {
@@ -129,373 +139,255 @@ fn validate_bases(s: &str) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-fn compile_five(raw: Vec<u8>, id: usize, sample_name: Option<String>) -> CompiledFivePrime {
-    let mut informative_positions = Vec::new();
-    let mut expected_bases = Vec::new();
-    let mut umi_positions = Vec::new();
-    for (i, &b) in raw.iter().enumerate() {
-        if b == b'N' {
-            umi_positions.push(i);
-        } else {
-            informative_positions.push(i);
-            expected_bases.push(b);
-        }
-    }
-    CompiledFivePrime {
-        id,
-        pattern_len: raw.len(),
-        informative_positions,
-        expected_bases,
-        umi_positions,
-        sample_name,
-        linked_three_prime: Vec::new(),
-        raw,
+fn normalize_header(h: &str) -> String {
+    h.trim()
+        .trim_start_matches('\u{feff}') // BOM
+        .to_ascii_lowercase()
+        .replace([' ', '-'], "_")
+}
+
+fn resolve_column(header: &str) -> Option<&'static str> {
+    match normalize_header(header).as_str() {
+        "samplenumber" | "sample_number" | "sample" | "sample_name" | "sampleid" | "sample_id"
+        | "name" => Some("sample"),
+        "barcode1" | "barcode_1" | "bc1" | "bc_1" | "index1" | "index_1" | "i7" => Some("barcode1"),
+        "barcode2" | "barcode_2" | "bc2" | "bc_2" | "index2" | "index_2" | "i5" => Some("barcode2"),
+        _ => None,
     }
 }
 
-fn compile_three(raw: Vec<u8>, id: usize, sample_name: Option<String>) -> CompiledThreePrime {
-    let pattern_len = raw.len();
-    let mut informative_offsets_from_end = Vec::new();
-    let mut expected_bases = Vec::new();
-    let mut umi_offsets_from_end = Vec::new();
-    for (i, &b) in raw.iter().enumerate() {
-        // offset from end: last base is 0
-        let offset = pattern_len - 1 - i;
-        if b == b'N' {
-            umi_offsets_from_end.push(offset);
-        } else {
-            informative_offsets_from_end.push(offset);
-            expected_bases.push(b);
-        }
-    }
-    // Keep informative offsets sorted by position from 5'→3' of the pattern
-    // (i.e. descending offset order as we walk from pattern start).
-    // expected_bases already follows pattern 5'→3' order among non-N bases.
-    CompiledThreePrime {
-        id,
-        raw,
-        pattern_len,
-        informative_offsets_from_end,
-        expected_bases,
-        umi_offsets_from_end,
-        sample_name,
-    }
-}
-
-/// Parse Ultraplex-compatible barcode CSV.
+/// Load SeqMux sample barcode table (CSV with header).
 pub fn load_barcodes_csv<P: AsRef<Path>>(
     path: P,
-    mismatches_5: usize,
-    mismatches_3: usize,
-    three_prime_only: bool,
+    mismatches_1: usize,
+    mismatches_2: usize,
 ) -> Result<BarcodeConfig> {
-    let content = std::fs::read_to_string(path.as_ref())?;
-    parse_barcodes_csv(&content, mismatches_5, mismatches_3, three_prime_only)
+    let content = std::fs::read_to_string(path.as_ref()).map_err(|e| {
+        AppError::BarcodeConfig(format!(
+            "failed to read barcode table {}: {e}",
+            path.as_ref().display()
+        ))
+    })?;
+    parse_barcodes_csv(&content, mismatches_1, mismatches_2)
 }
 
+/// Parse SeqMux sample barcode CSV.
+///
+/// Required header columns (case-insensitive):
+/// - `SampleNumber` (aliases: Sample, Sample_Name, Name, …)
+/// - `Barcode1` (aliases: Barcode_1, BC1, Index1, i7, …)
+///
+/// Optional:
+/// - `Barcode2` (aliases: Barcode_2, BC2, Index2, i5, …)
+///
+/// Extra columns (`PCR_product`, `rawdata1`, `F_primer`, …) are ignored.
 pub fn parse_barcodes_csv(
     content: &str,
-    mismatches_5: usize,
-    mismatches_3: usize,
-    three_prime_only: bool,
+    mismatches_1: usize,
+    mismatches_2: usize,
 ) -> Result<BarcodeConfig> {
-    let mut five_prime: Vec<CompiledFivePrime> = Vec::new();
-    let mut sample_names_seen: HashSet<String> = HashSet::new();
-    let mut five_info_len: Option<usize> = None;
-    let mut has_any_three = false;
-    let mut five_id = 0usize;
-    let mut three_id = 0usize;
+    let mut rdr = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .flexible(true)
+        .trim(csv::Trim::All)
+        .from_reader(content.as_bytes());
 
-    for (line_no, raw_line) in content.lines().enumerate() {
-        let line = raw_line.trim().replace(' ', "");
-        if line.is_empty() {
-            continue;
-        }
-        let parts: Vec<&str> = line.split(',').collect();
-        let first = parts[0];
-        let (five_raw_str, five_sample) = split_bc_sample(first)?;
-        let five_bytes = validate_bases(five_raw_str)?;
+    let headers = rdr.headers().map_err(|e| {
+        AppError::BarcodeConfig(format!(
+            "failed to read CSV header (SeqMux requires a header row with SampleNumber,Barcode1,Barcode2): {e}"
+        ))
+    })?;
 
-        let info_len = five_bytes.iter().filter(|&&b| b != b'N').count();
-        if info_len == 0 {
-            return Err(AppError::BarcodeConfig(format!(
-                "line {}: barcode has no informative bases",
-                line_no + 1
-            )));
-        }
-        match five_info_len {
-            None => five_info_len = Some(info_len),
-            Some(n) if n != info_len => {
-                return Err(AppError::BarcodeConfig(format!(
-                    "line {}: 5' barcodes have inconsistent informative length ({n} vs {info_len})",
-                    line_no + 1
-                )));
-            }
+    let mut col_sample: Option<usize> = None;
+    let mut col_bc1: Option<usize> = None;
+    let mut col_bc2: Option<usize> = None;
+
+    for (i, h) in headers.iter().enumerate() {
+        match resolve_column(h) {
+            Some("sample") => col_sample = Some(i),
+            Some("barcode1") => col_bc1 = Some(i),
+            Some("barcode2") => col_bc2 = Some(i),
             _ => {}
         }
-
-        // Collect linked 3' barcodes
-        let mut linked = Vec::new();
-        let mut three_info_len: Option<usize> = None;
-        for col in parts.iter().skip(1) {
-            if col.is_empty() {
-                continue;
-            }
-            let (three_raw, three_sample) = split_bc_sample(col)?;
-            let three_bytes = validate_bases(three_raw)?;
-            let t_info = three_bytes.iter().filter(|&&b| b != b'N').count();
-            if t_info == 0 {
-                return Err(AppError::BarcodeConfig(format!(
-                    "line {}: 3' barcode has no informative bases",
-                    line_no + 1
-                )));
-            }
-            match three_info_len {
-                None => three_info_len = Some(t_info),
-                Some(n) if n != t_info => {
-                    return Err(AppError::BarcodeConfig(format!(
-                        "line {}: linked 3' barcodes have inconsistent informative length",
-                        line_no + 1
-                    )));
-                }
-                _ => {}
-            }
-            if let Some(ref name) = three_sample {
-                if !sample_names_seen.insert(name.clone()) {
-                    return Err(AppError::BarcodeConfig(format!(
-                        "duplicate sample name: {name}"
-                    )));
-                }
-            }
-            linked.push(compile_three(three_bytes, three_id, three_sample));
-            three_id += 1;
-        }
-
-        if !linked.is_empty() {
-            has_any_three = true;
-            if five_sample.is_some() {
-                return Err(AppError::BarcodeConfig(format!(
-                    "line {}: cannot name 5' barcode when linked 3' barcodes are present",
-                    line_no + 1
-                )));
-            }
-        } else if let Some(ref name) = five_sample {
-            if !sample_names_seen.insert(name.clone()) {
-                return Err(AppError::BarcodeConfig(format!(
-                    "duplicate sample name: {name}"
-                )));
-            }
-        }
-
-        let mut compiled = compile_five(five_bytes, five_id, five_sample);
-        five_id += 1;
-        compiled.linked_three_prime = linked;
-        five_prime.push(compiled);
     }
 
-    if five_prime.is_empty() {
-        return Err(AppError::BarcodeConfig("no barcodes found in CSV".into()));
-    }
+    let col_sample = col_sample.ok_or_else(|| {
+        AppError::BarcodeConfig(
+            "missing required column SampleNumber (or Sample / Sample_Name / Name)".into(),
+        )
+    })?;
+    let col_bc1 = col_bc1.ok_or_else(|| {
+        AppError::BarcodeConfig(
+            "missing required column Barcode1 (or Barcode_1 / BC1 / Index1)".into(),
+        )
+    })?;
 
-    // Validate UMI position consistency for 5'
-    check_five_n_positions(&five_prime)?;
+    let mut samples = Vec::new();
+    let mut names_seen: HashSet<String> = HashSet::new();
+    let mut pair_seen: HashSet<(String, String)> = HashSet::new();
+    let mut any_bc2 = false;
+    let mut all_bc2 = true;
 
-    // For three_prime_only: reverse-complement patterns and require paired-end later
-    let mode = if three_prime_only {
-        if has_any_three {
-            return Err(AppError::BarcodeConfig(
-                "three_prime_only mode expects barcodes listed as 5' columns (no linked 3')".into(),
-            ));
-        }
-        // RC each barcode
-        for bc in &mut five_prime {
-            let rc = revcomp(&bc.raw);
-            let sample = bc.sample_name.clone();
-            let id = bc.id;
-            *bc = compile_five(rc, id, sample);
-        }
-        DemuxMode::ThreePrimeOnly
-    } else if has_any_three {
-        DemuxMode::FiveAndThreePrime
-    } else {
-        DemuxMode::FivePrime
-    };
+    for (row_idx, rec) in rdr.records().enumerate() {
+        let rec = rec.map_err(|e| {
+            AppError::BarcodeConfig(format!("CSV parse error at data row {}: {e}", row_idx + 1))
+        })?;
+        let line_no = row_idx + 2; // 1-based, accounting for header
+        let id = row_idx;
 
-    let info5 = five_info_len.unwrap_or(0);
-    if mismatches_5 > info5 {
-        return Err(AppError::BarcodeConfig(format!(
-            "mismatches-5 ({mismatches_5}) exceeds informative bases ({info5})"
-        )));
-    }
-    if has_any_three {
-        // check max 3' info across all
-        let max3 = five_prime
-            .iter()
-            .flat_map(|f| f.linked_three_prime.iter())
-            .map(|t| t.expected_bases.len())
-            .max()
-            .unwrap_or(0);
-        if mismatches_3 > max3 {
+        let name = rec.get(col_sample).unwrap_or("").trim().to_string();
+        if name.is_empty() {
             return Err(AppError::BarcodeConfig(format!(
-                "mismatches-3 ({mismatches_3}) exceeds informative bases ({max3})"
+                "line {line_no}: empty SampleNumber"
             )));
         }
-        for f in &five_prime {
-            if !f.linked_three_prime.is_empty() {
-                check_three_n_positions(&f.linked_three_prime)?;
+        if !names_seen.insert(name.clone()) {
+            return Err(AppError::BarcodeConfig(format!(
+                "line {line_no}: duplicate sample name '{name}'"
+            )));
+        }
+
+        let bc1_raw = rec.get(col_bc1).unwrap_or("").trim();
+        if bc1_raw.is_empty() {
+            return Err(AppError::BarcodeConfig(format!(
+                "line {line_no}: empty Barcode1 for sample '{name}'"
+            )));
+        }
+        let barcode1 = CompiledBarcode::compile(validate_bases(bc1_raw)?)?;
+
+        let barcode2 = if let Some(c2) = col_bc2 {
+            let bc2_raw = rec.get(c2).unwrap_or("").trim();
+            if bc2_raw.is_empty() {
+                all_bc2 = false;
+                None
+            } else {
+                any_bc2 = true;
+                Some(CompiledBarcode::compile(validate_bases(bc2_raw)?)?)
             }
+        } else {
+            all_bc2 = false;
+            None
+        };
+
+        let pair_key = (
+            String::from_utf8_lossy(&barcode1.raw).into_owned(),
+            barcode2
+                .as_ref()
+                .map(|b| String::from_utf8_lossy(&b.raw).into_owned())
+                .unwrap_or_default(),
+        );
+        if !pair_seen.insert(pair_key) {
+            return Err(AppError::BarcodeConfig(format!(
+                "line {line_no}: duplicate barcode combination for sample '{name}'"
+            )));
+        }
+
+        samples.push(SampleEntry {
+            id,
+            name,
+            barcode1,
+            barcode2,
+        });
+    }
+
+    if samples.is_empty() {
+        return Err(AppError::BarcodeConfig(
+            "no samples found in barcode table".into(),
+        ));
+    }
+
+    if any_bc2 && !all_bc2 {
+        return Err(AppError::BarcodeConfig(
+            "Barcode2 must be present for all samples or none (mixed single/dual not supported)"
+                .into(),
+        ));
+    }
+
+    let mode = if all_bc2 && any_bc2 {
+        DemuxMode::DualBarcode
+    } else {
+        DemuxMode::SingleBarcode
+    };
+
+    let max_info1 = samples
+        .iter()
+        .map(|s| s.barcode1.expected_bases.len())
+        .max()
+        .unwrap_or(0);
+    if mismatches_1 > max_info1 {
+        return Err(AppError::BarcodeConfig(format!(
+            "mismatches-1 ({mismatches_1}) exceeds longest Barcode1 informative length ({max_info1})"
+        )));
+    }
+    if mode == DemuxMode::DualBarcode {
+        let max_info2 = samples
+            .iter()
+            .filter_map(|s| s.barcode2.as_ref())
+            .map(|b| b.expected_bases.len())
+            .max()
+            .unwrap_or(0);
+        if mismatches_2 > max_info2 {
+            return Err(AppError::BarcodeConfig(format!(
+                "mismatches-2 ({mismatches_2}) exceeds longest Barcode2 informative length ({max_info2})"
+            )));
         }
     }
 
     Ok(BarcodeConfig {
-        five_prime,
+        samples,
         mode,
-        mismatches_5,
-        mismatches_3,
+        mismatches_1,
+        mismatches_2,
     })
-}
-
-fn split_bc_sample(s: &str) -> Result<(&str, Option<String>)> {
-    let colon_count = s.matches(':').count();
-    if colon_count > 1 {
-        return Err(AppError::BarcodeConfig(format!(
-            "multiple colons in barcode field: {s}"
-        )));
-    }
-    if let Some((bc, name)) = s.split_once(':') {
-        let name = name.trim();
-        if name.is_empty() {
-            Ok((bc, None))
-        } else {
-            Ok((bc, Some(name.to_string())))
-        }
-    } else {
-        Ok((s, None))
-    }
-}
-
-fn check_five_n_positions(bcs: &[CompiledFivePrime]) -> Result<()> {
-    if bcs.is_empty() {
-        return Ok(());
-    }
-    // Ultraplex: first non-N position must be consistent
-    let ref_pos = bcs[0]
-        .informative_positions
-        .first()
-        .copied()
-        .ok_or_else(|| AppError::BarcodeConfig("empty informative positions".into()))?;
-    for bc in bcs {
-        let pos = bc.informative_positions.first().copied().unwrap_or(0);
-        if pos != ref_pos {
-            return Err(AppError::BarcodeConfig(
-                "UMI positions not consistent across 5' barcodes".into(),
-            ));
-        }
-        // also require identical informative position sets for matching
-        if bc.informative_positions != bcs[0].informative_positions {
-            // Allow different UMI lengths only if informative positions match relative layout
-            // Ultraplex requires same informative length; positions of non-N relative to first.
-            // We require exact same informative positions for simplicity and correctness.
-            return Err(AppError::BarcodeConfig(
-                "5' barcode informative positions are not consistent".into(),
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn check_three_n_positions(bcs: &[CompiledThreePrime]) -> Result<()> {
-    if bcs.is_empty() {
-        return Ok(());
-    }
-    // Ultraplex: distance from end of last non-N must be consistent
-    let ref_off = bcs[0]
-        .informative_offsets_from_end
-        .iter()
-        .min()
-        .copied()
-        .unwrap_or(0);
-    for bc in bcs {
-        let off = bc
-            .informative_offsets_from_end
-            .iter()
-            .min()
-            .copied()
-            .unwrap_or(0);
-        if off != ref_off {
-            return Err(AppError::BarcodeConfig(
-                "UMI positions not consistent across 3' barcodes".into(),
-            ));
-        }
-    }
-    Ok(())
-}
-
-/// Build sample key for a match.
-pub fn sample_key_for(
-    five: &CompiledFivePrime,
-    three: Option<&CompiledThreePrime>,
-    mode: DemuxMode,
-) -> SampleKey {
-    match mode {
-        DemuxMode::ThreePrimeOnly => {
-            if let Some(name) = &five.sample_name {
-                SampleKey::Named(name.clone())
-            } else {
-                SampleKey::ThreePrime {
-                    barcode: String::from_utf8_lossy(&five.raw).into_owned(),
-                }
-            }
-        }
-        _ => {
-            if let Some(t) = three {
-                if let Some(name) = &t.sample_name {
-                    SampleKey::Named(name.clone())
-                } else {
-                    SampleKey::Combined {
-                        five: String::from_utf8_lossy(&five.raw).into_owned(),
-                        three: String::from_utf8_lossy(&t.raw).into_owned(),
-                    }
-                }
-            } else if let Some(name) = &five.sample_name {
-                SampleKey::Named(name.clone())
-            } else {
-                SampleKey::FivePrime {
-                    barcode: String::from_utf8_lossy(&five.raw).into_owned(),
-                }
-            }
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
+
+    const EXAMPLE: &str = "\
+SampleNumber,Barcode1,Barcode2,PCR_product,rawdata1,rawdata2,library_round,F_primer,R_primer
+I464469-A1,AAGTCCAA,GGAGTACT,atgc,E1.fq.gz,E2.fq.gz,A,fwd,rev
+I464469-A2,GACCTGAA,GGACTTGG,agcg,E1.fq.gz,E2.fq.gz,A,fwd,rev
+";
 
     #[test]
-    fn parse_simple_5p() {
-        let csv = "NNNATGNN:sampleA\nNNNCCGNN:sampleB\n";
-        let cfg = parse_barcodes_csv(csv, 0, 0, false).unwrap();
-        assert_eq!(cfg.five_prime.len(), 2);
-        assert_eq!(cfg.mode, DemuxMode::FivePrime);
-        assert_eq!(cfg.five_prime[0].sample_name.as_deref(), Some("sampleA"));
-        assert_eq!(cfg.five_prime[0].expected_bases, b"ATG");
-        assert_eq!(cfg.five_prime[0].umi_positions, vec![0, 1, 2, 6, 7]);
+    fn parse_seqmux_table() {
+        let cfg = parse_barcodes_csv(EXAMPLE, 0, 0).unwrap();
+        assert_eq!(cfg.samples.len(), 2);
+        assert_eq!(cfg.mode, DemuxMode::DualBarcode);
+        assert_eq!(cfg.samples[0].name, "I464469-A1");
+        assert_eq!(cfg.samples[0].barcode1.raw, b"AAGTCCAA");
+        assert_eq!(cfg.samples[0].barcode2.as_ref().unwrap().raw, b"GGAGTACT");
+        assert_eq!(cfg.samples[1].name, "I464469-A2");
     }
 
     #[test]
-    fn parse_linked_3p() {
-        let csv = "NNNATGNN,ATG:s1,TCA:s2\nNNNCCGNN,\n";
-        let cfg = parse_barcodes_csv(csv, 0, 0, false).unwrap();
-        assert_eq!(cfg.mode, DemuxMode::FiveAndThreePrime);
-        assert_eq!(cfg.five_prime[0].linked_three_prime.len(), 2);
-        assert!(cfg.five_prime[1].linked_three_prime.is_empty());
+    fn parse_single_barcode() {
+        let csv = "SampleNumber,Barcode1\ns1,ATGATGAT\ns2,CCGTAACG\n";
+        let cfg = parse_barcodes_csv(csv, 0, 0).unwrap();
+        assert_eq!(cfg.mode, DemuxMode::SingleBarcode);
+        assert!(cfg.samples[0].barcode2.is_none());
     }
 
     #[test]
     fn reject_duplicate_sample() {
-        let csv = "ATG:s1\nCCG:s1\n";
-        assert!(parse_barcodes_csv(csv, 0, 0, false).is_err());
+        let csv = "SampleNumber,Barcode1,Barcode2\ns1,AAAAAAAA,TTTTTTTT\ns1,CCCCCCCC,GGGGGGGG\n";
+        assert!(parse_barcodes_csv(csv, 0, 0).is_err());
+    }
+
+    #[test]
+    fn reject_missing_header() {
+        let csv = "s1,AAAAAAAA,TTTTTTTT\n";
+        assert!(parse_barcodes_csv(csv, 0, 0).is_err());
+    }
+
+    #[test]
+    fn header_aliases() {
+        let csv = "sample_name,bc1,bc2\nS1,ACGTACGT,TGCATGCA\n";
+        let cfg = parse_barcodes_csv(csv, 0, 0).unwrap();
+        assert_eq!(cfg.samples[0].name, "S1");
     }
 
     #[test]
@@ -504,5 +396,17 @@ mod tests {
         assert_eq!(t.total_len, 8);
         assert_eq!(t.umi_positions.len(), 5);
         assert_eq!(t.ignored_positions.len(), 3);
+    }
+
+    #[test]
+    fn parse_fixture_i464_table() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/I464-469erdai_barcode_and_name.csv");
+        let cfg = load_barcodes_csv(&path, 0, 0).expect("parse fixture table");
+        assert_eq!(cfg.samples.len(), 35);
+        assert_eq!(cfg.mode, DemuxMode::DualBarcode);
+        assert_eq!(cfg.samples[0].name, "I464469-A1");
+        assert_eq!(cfg.samples[0].barcode1.raw, b"AAGTCCAA");
+        assert_eq!(cfg.samples[0].barcode2.as_ref().unwrap().raw, b"GGAGTACT");
     }
 }

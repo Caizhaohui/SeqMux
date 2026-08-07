@@ -1,4 +1,4 @@
-use crate::barcode::{load_barcodes_csv, DemuxMode, TsoPattern};
+use crate::barcode::{load_barcodes_csv, TsoPattern};
 use crate::error::{AppError, Result};
 use crate::fastq::{validate_fastq, InputReader};
 use crate::pipeline::run_pipeline;
@@ -12,10 +12,10 @@ use std::path::PathBuf;
     name = "seqmux",
     version,
     about = "SeqMux — fast, portable FASTQ demultiplexer",
-    long_about = "SeqMux demultiplexes single-end and paired-end FASTQ files by 5'/3' \
-barcodes (with UMI support), quality/adapter trimming, and multi-threaded streaming I/O.\n\n\
-Inspired by Ultraplex (https://github.com/ulelab/ultraplex), redesigned as a single \
-static-friendly Rust binary with no Python, pigz, or SLURM dependency."
+    long_about = "SeqMux demultiplexes single-end and paired-end FASTQ files using a \
+sample barcode table (SampleNumber, Barcode1, Barcode2). Supports quality/adapter \
+trimming and multi-threaded streaming I/O.\n\n\
+Barcode table format is SeqMux-native (header required). Ultraplex CSV is not supported."
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -40,7 +40,7 @@ pub struct DemuxArgs {
     #[arg(short = 'I', long = "input2", visible_alias = "i2")]
     pub input2: Option<PathBuf>,
 
-    /// Barcode CSV (Ultraplex-compatible)
+    /// Sample barcode table CSV (header: SampleNumber,Barcode1,Barcode2,…)
     #[arg(short = 'b', long = "barcodes")]
     pub barcodes: PathBuf,
 
@@ -61,24 +61,30 @@ pub struct DemuxArgs {
     pub no_gzip: bool,
 
     /// Discard unassigned reads (do not write unassigned file)
-    #[arg(long = "discard-unassigned", visible_alias = "inm")]
+    #[arg(long = "discard-unassigned")]
     pub discard_unassigned: bool,
 
-    /// Allowed mismatches for 5' barcode
-    #[arg(long = "mismatches-5", visible_alias = "m5", default_value_t = 0)]
-    pub mismatches_5: usize,
+    /// Allowed mismatches for Barcode1
+    #[arg(
+        long = "mismatches-1",
+        visible_alias = "m1",
+        alias = "mismatches-5",
+        default_value_t = 0
+    )]
+    pub mismatches_1: usize,
 
-    /// Allowed mismatches for 3' barcode
-    #[arg(long = "mismatches-3", visible_alias = "m3", default_value_t = 0)]
-    pub mismatches_3: usize,
+    /// Allowed mismatches for Barcode2
+    #[arg(
+        long = "mismatches-2",
+        visible_alias = "m2",
+        alias = "mismatches-3",
+        default_value_t = 0
+    )]
+    pub mismatches_2: usize,
 
-    /// Keep barcodes/UMIs in the sequence (UMI still written to header)
+    /// Keep barcode bases in the sequence (do not trim)
     #[arg(long = "keep-barcodes", visible_alias = "kbc")]
     pub keep_barcodes: bool,
-
-    /// Three-prime-only mode (paired-end required; barcodes RC'd onto R2)
-    #[arg(long = "three-prime-only")]
-    pub three_prime_only: bool,
 
     /// TSO pattern (N=UMI, I=ignore/trim)
     #[arg(long = "tso-pattern")]
@@ -115,10 +121,6 @@ pub struct DemuxArgs {
     /// Max error rate for adapter matching
     #[arg(long = "adapter-error-rate", default_value_t = 0.1)]
     pub adapter_error_rate: f32,
-
-    /// Min adapter bases required before single-end 3' barcode demux
-    #[arg(long = "min-adapter-trim-for-3p", default_value_t = 3)]
-    pub min_adapter_trim_for_3p: usize,
 
     /// Worker threads
     #[arg(short = 't', long = "threads", default_value_t = 4)]
@@ -185,20 +187,12 @@ pub fn run(cli: Cli) -> Result<()> {
 }
 
 fn run_demux(args: DemuxArgs) -> Result<()> {
-    if args.quiet {
-        // leave logger quiet
-    } else {
+    if !args.quiet {
         env_logger::Builder::from_env(
             env_logger::Env::default().default_filter_or(args.log_level.as_str()),
         )
         .format_timestamp_secs()
         .init();
-    }
-
-    if args.three_prime_only && args.input2.is_none() {
-        return Err(AppError::Cli(
-            "--three-prime-only requires paired-end input (-I/--input2)".into(),
-        ));
     }
 
     if !(1..=9).contains(&args.compression_level) {
@@ -207,18 +201,7 @@ fn run_demux(args: DemuxArgs) -> Result<()> {
         ));
     }
 
-    let barcodes = load_barcodes_csv(
-        &args.barcodes,
-        args.mismatches_5,
-        args.mismatches_3,
-        args.three_prime_only,
-    )?;
-
-    if matches!(barcodes.mode, DemuxMode::ThreePrimeOnly) && args.input2.is_none() {
-        return Err(AppError::Cli(
-            "three-prime-only barcode mode requires paired-end input".into(),
-        ));
-    }
+    let barcodes = load_barcodes_csv(&args.barcodes, args.mismatches_1, args.mismatches_2)?;
 
     let tso = match args.tso_pattern {
         Some(ref s) => Some(TsoPattern::parse(s)?),
@@ -237,7 +220,6 @@ fn run_demux(args: DemuxArgs) -> Result<()> {
         adapter_r2: args.adapter_r2.map(|s| s.into_bytes()),
         adapter_error_rate: args.adapter_error_rate,
         min_adapter_overlap: args.min_adapter_overlap,
-        min_adapter_trim_for_3p: args.min_adapter_trim_for_3p,
         tso,
         phred_offset: 33,
     };
@@ -255,8 +237,10 @@ fn run_demux(args: DemuxArgs) -> Result<()> {
             eprintln!("  input2: {}", i2.display());
         }
         eprintln!("  barcodes: {}", args.barcodes.display());
-        eprintln!("  out-dir: {}", args.out_dir.display());
-        eprintln!("  threads: {}", args.threads);
+        eprintln!("  samples : {}", cfg.barcodes.samples.len());
+        eprintln!("  mode    : {:?}", cfg.barcodes.mode);
+        eprintln!("  out-dir : {}", args.out_dir.display());
+        eprintln!("  threads : {}", args.threads);
     }
 
     run_pipeline(

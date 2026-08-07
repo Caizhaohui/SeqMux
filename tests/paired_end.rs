@@ -14,29 +14,34 @@ fn write_fastq(path: &std::path::Path, records: &[(&str, &str, &str)]) {
 }
 
 #[test]
-fn paired_demux_basic() {
+fn paired_dual_barcode_demux() {
     let dir = tempdir().unwrap();
     let r1 = dir.path().join("r1.fastq");
     let r2 = dir.path().join("r2.fastq");
     let bc = dir.path().join("barcodes.csv");
     let out = dir.path().join("out");
 
-    // 5' barcode ATG on R1
+    // Barcode1 on R1 5', Barcode2 on R2 5'
     write_fastq(
         &r1,
         &[
-            ("readA/1", "ATGCCCCCCCC", "IIIIIIIIIII"),
-            ("readB/1", "GGGCCCCCCCC", "IIIIIIIIIII"),
+            ("readA/1", "AAGTCCAACCCCCCCC", "IIIIIIIIIIIIIIII"),
+            ("readB/1", "GGGGGGGGCCCCCCCC", "IIIIIIIIIIIIIIII"),
         ],
     );
     write_fastq(
         &r2,
         &[
-            ("readA/2", "GGGGGGCAT", "IIIIIIIII"), // RC(ATG)=CAT at end
-            ("readB/2", "GGGGGGGGG", "IIIIIIIII"),
+            ("readA/2", "GGAGTACTGGGGGGGG", "IIIIIIIIIIIIIIII"),
+            ("readB/2", "GGGGGGGGGGGGGGGG", "IIIIIIIIIIIIIIII"),
         ],
     );
-    fs::write(&bc, "ATG:sampleX\n").unwrap();
+    fs::write(
+        &bc,
+        "SampleNumber,Barcode1,Barcode2,PCR_product,rawdata1,rawdata2,library_round,F_primer,R_primer\n\
+         I464469-A1,AAGTCCAA,GGAGTACT,atgc,x_1.fq.gz,x_2.fq.gz,A,fwd,rev\n",
+    )
+    .unwrap();
 
     Command::cargo_bin("seqmux")
         .unwrap()
@@ -60,12 +65,13 @@ fn paired_demux_basic() {
         .assert()
         .success();
 
-    let o1 = fs::read_to_string(out.join("pe_sampleX_R1.fastq")).unwrap();
+    let o1 = fs::read_to_string(out.join("pe_I464469-A1_R1.fastq")).unwrap();
     assert!(o1.contains("@readA"));
-    assert!(o1.contains("\nCCCCCCCC\n")); // ATG trimmed
+    assert!(o1.contains("\nCCCCCCCC\n")); // Barcode1 trimmed
 
-    let o2 = fs::read_to_string(out.join("pe_sampleX_R2.fastq")).unwrap();
+    let o2 = fs::read_to_string(out.join("pe_I464469-A1_R2.fastq")).unwrap();
     assert!(o2.contains("@readA"));
+    assert!(o2.contains("\nGGGGGGGG\n")); // Barcode2 trimmed
 
     let u1 = fs::read_to_string(out.join("pe_unassigned_R1.fastq")).unwrap();
     assert!(u1.contains("@readB"));
@@ -79,9 +85,13 @@ fn paired_id_mismatch_errors() {
     let bc = dir.path().join("barcodes.csv");
     let out = dir.path().join("out");
 
-    write_fastq(&r1, &[("readA/1", "ATGCCC", "IIIIII")]);
-    write_fastq(&r2, &[("readZ/2", "GGGCAT", "IIIIII")]);
-    fs::write(&bc, "ATG:s1\n").unwrap();
+    write_fastq(&r1, &[("readA/1", "AAGTCCAACCCC", "IIIIIIIIIIII")]);
+    write_fastq(&r2, &[("readZ/2", "GGAGTACTGGGG", "IIIIIIIIIIII")]);
+    fs::write(
+        &bc,
+        "SampleNumber,Barcode1,Barcode2\nI464469-A1,AAGTCCAA,GGAGTACT\n",
+    )
+    .unwrap();
 
     Command::cargo_bin("seqmux")
         .unwrap()

@@ -1,0 +1,4 @@
+SampleNumber,Barcode1,Barcode2,PCR_product,rawdata1,rawdata2,library_round,F_primer,R_primer
+I464469-A1,AAGTCCAA,GGAGTACT,example_amplicon,mix_1.fq.gz,mix_2.fq.gz,A,fwd_primer,rev_primer
+I464469-A2,GACCTGAA,GGACTTGG,example_amplicon,mix_1.fq.gz,mix_2.fq.gz,A,fwd_primer,rev_primer
+I464469-A3,GGCTTAAG,TGGATCGA,example_amplicon,mix_1.fq.gz,mix_2.fq.gz,A,fwd_primer,rev_primer

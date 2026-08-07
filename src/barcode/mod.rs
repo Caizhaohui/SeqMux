@@ -2,9 +2,10 @@ pub mod config;
 pub mod matcher;
 
 pub use config::{
-    load_barcodes_csv, parse_barcodes_csv, sample_key_for, BarcodeConfig, CompiledFivePrime,
-    CompiledThreePrime, DemuxMode, SampleKey, TsoPattern,
+    load_barcodes_csv, parse_barcodes_csv, BarcodeConfig, CompiledBarcode, DemuxMode, SampleEntry,
+    SampleKey, TsoPattern,
 };
 pub use matcher::{
-    extract_five_umi, extract_three_umi, hamming, match_five_prime, match_three_prime, MatchResult,
+    assign_paired, assign_single, barcode_distance_3p, barcode_distance_5p, extract_umi_3p,
+    extract_umi_5p, hamming, sample_key, MatchResult,
 };

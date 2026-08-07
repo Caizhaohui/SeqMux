@@ -1,10 +1,15 @@
-use super::config::{CompiledFivePrime, CompiledThreePrime};
+use super::config::{BarcodeConfig, CompiledBarcode, DemuxMode, SampleEntry, SampleKey};
 
-/// Match result for a barcode search.
+/// Match result for sample assignment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MatchResult {
-    Match { index: usize, distance: usize },
-    Ambiguous { distance: usize },
+    Match {
+        sample_index: usize,
+        distance: usize,
+    },
+    Ambiguous {
+        distance: usize,
+    },
     NoMatch,
 }
 
@@ -13,10 +18,7 @@ pub fn hamming(observed: &[u8], expected: &[u8]) -> usize {
     observed
         .iter()
         .zip(expected.iter())
-        .filter(|(a, b)| {
-            // N in the read counts as mismatch (Ultraplex: penalty for N in the read)
-            **a != **b
-        })
+        .filter(|(a, b)| **a != **b)
         .count()
 }
 
@@ -32,118 +34,30 @@ pub fn extract_at(seq: &[u8], positions: &[usize]) -> Option<Vec<u8>> {
     Some(out)
 }
 
-/// Extract bases using offsets from the 3' end (0 = last base).
-/// Returns bases in 5'→3' pattern order (same order as `expected_bases`).
-pub fn extract_from_end(
-    seq: &[u8],
-    offsets_from_end: &[usize],
-    pattern_order_indices: &[usize],
-) -> Option<Vec<u8>> {
-    // pattern_order_indices not needed if offsets are stored in pattern 5'→3' order.
-    // Our compile_three stores informative_offsets_from_end in pattern 5'→3' order.
-    let _ = pattern_order_indices;
-    let mut out = Vec::with_capacity(offsets_from_end.len());
-    for &off in offsets_from_end {
-        if off >= seq.len() {
-            return None;
-        }
-        let idx = seq.len() - 1 - off;
-        out.push(seq[idx].to_ascii_uppercase());
+/// Distance of barcode against the 5' end of a read.
+pub fn barcode_distance_5p(seq: &[u8], bc: &CompiledBarcode) -> Option<usize> {
+    if seq.len() < bc.pattern_len {
+        return None;
     }
-    Some(out)
+    let observed = extract_at(seq, &bc.informative_positions)?;
+    Some(hamming(&observed, &bc.expected_bases))
 }
 
-/// Best match among 5' barcodes.
-pub fn match_five_prime(
-    seq: &[u8],
-    barcodes: &[CompiledFivePrime],
-    max_mismatches: usize,
-) -> MatchResult {
-    if barcodes.is_empty() {
-        return MatchResult::NoMatch;
+/// Distance of barcode against the 3' end of a read (pattern aligned to suffix).
+pub fn barcode_distance_3p(seq: &[u8], bc: &CompiledBarcode) -> Option<usize> {
+    if seq.len() < bc.pattern_len {
+        return None;
     }
-    // All share same informative positions
-    let positions = &barcodes[0].informative_positions;
-    let observed = match extract_at(seq, positions) {
-        Some(o) => o,
-        None => return MatchResult::NoMatch,
-    };
-
-    let mut best_distance = usize::MAX;
-    let mut best_idx: Option<usize> = None;
-    let mut tie = false;
-
-    for (i, bc) in barcodes.iter().enumerate() {
-        let d = hamming(&observed, &bc.expected_bases);
-        if d < best_distance {
-            best_distance = d;
-            best_idx = Some(i);
-            tie = false;
-        } else if d == best_distance {
-            tie = true;
-        }
+    let start = seq.len() - bc.pattern_len;
+    let mut observed = Vec::with_capacity(bc.informative_positions.len());
+    for &p in &bc.informative_positions {
+        observed.push(seq[start + p].to_ascii_uppercase());
     }
-
-    if best_distance > max_mismatches {
-        MatchResult::NoMatch
-    } else if tie {
-        MatchResult::Ambiguous {
-            distance: best_distance,
-        }
-    } else {
-        MatchResult::Match {
-            index: best_idx.unwrap(),
-            distance: best_distance,
-        }
-    }
+    Some(hamming(&observed, &bc.expected_bases))
 }
 
-/// Best match among linked 3' barcodes for one 5' group.
-pub fn match_three_prime(
-    seq: &[u8],
-    barcodes: &[CompiledThreePrime],
-    max_mismatches: usize,
-) -> MatchResult {
-    if barcodes.is_empty() {
-        return MatchResult::NoMatch;
-    }
-
-    let mut best_distance = usize::MAX;
-    let mut best_idx: Option<usize> = None;
-    let mut tie = false;
-
-    for (i, bc) in barcodes.iter().enumerate() {
-        if seq.len() < bc.pattern_len {
-            continue;
-        }
-        let observed = match extract_from_end(seq, &bc.informative_offsets_from_end, &[]) {
-            Some(o) => o,
-            None => continue,
-        };
-        let d = hamming(&observed, &bc.expected_bases);
-        if d < best_distance {
-            best_distance = d;
-            best_idx = Some(i);
-            tie = false;
-        } else if d == best_distance {
-            tie = true;
-        }
-    }
-
-    match best_idx {
-        Some(index) if best_distance <= max_mismatches && !tie => MatchResult::Match {
-            index,
-            distance: best_distance,
-        },
-        Some(_) if best_distance <= max_mismatches && tie => MatchResult::Ambiguous {
-            distance: best_distance,
-        },
-        _ => MatchResult::NoMatch,
-    }
-}
-
-/// Extract 5' UMI bases from sequence given compiled barcode.
-pub fn extract_five_umi(seq: &[u8], bc: &CompiledFivePrime) -> Vec<u8> {
+/// Extract UMI bases from the 5' barcode region.
+pub fn extract_umi_5p(seq: &[u8], bc: &CompiledBarcode) -> Vec<u8> {
     bc.umi_positions
         .iter()
         .filter_map(|&p| seq.get(p).copied())
@@ -151,18 +65,110 @@ pub fn extract_five_umi(seq: &[u8], bc: &CompiledFivePrime) -> Vec<u8> {
         .collect()
 }
 
-/// Extract 3' UMI bases from sequence given compiled barcode.
-pub fn extract_three_umi(seq: &[u8], bc: &CompiledThreePrime) -> Vec<u8> {
-    // Return UMI in 5'→3' order along the pattern
-    // umi_offsets_from_end are stored in pattern 5'→3' order
-    let mut out = Vec::with_capacity(bc.umi_offsets_from_end.len());
-    for &off in &bc.umi_offsets_from_end {
-        if off < seq.len() {
-            let idx = seq.len() - 1 - off;
-            out.push(seq[idx].to_ascii_uppercase());
+/// Extract UMI bases from the 3' barcode region.
+pub fn extract_umi_3p(seq: &[u8], bc: &CompiledBarcode) -> Vec<u8> {
+    if seq.len() < bc.pattern_len {
+        return Vec::new();
+    }
+    let start = seq.len() - bc.pattern_len;
+    bc.umi_positions
+        .iter()
+        .filter_map(|&p| seq.get(start + p).copied())
+        .map(|b| b.to_ascii_uppercase())
+        .collect()
+}
+
+fn pick_best(candidates: &[(usize, usize)]) -> MatchResult {
+    if candidates.is_empty() {
+        return MatchResult::NoMatch;
+    }
+    let best = candidates.iter().map(|(_, d)| *d).min().unwrap();
+    let winners: Vec<usize> = candidates
+        .iter()
+        .filter(|(_, d)| *d == best)
+        .map(|(i, _)| *i)
+        .collect();
+    if winners.len() == 1 {
+        MatchResult::Match {
+            sample_index: winners[0],
+            distance: best,
+        }
+    } else {
+        MatchResult::Ambiguous { distance: best }
+    }
+}
+
+/// Match single-end or R1-only using Barcode1 at 5'.
+pub fn match_single(seq: &[u8], cfg: &BarcodeConfig) -> MatchResult {
+    let mut candidates = Vec::new();
+    for (i, sample) in cfg.samples.iter().enumerate() {
+        if let Some(d) = barcode_distance_5p(seq, &sample.barcode1) {
+            if d <= cfg.mismatches_1 {
+                candidates.push((i, d));
+            }
         }
     }
-    out
+    pick_best(&candidates)
+}
+
+/// Match dual-barcode single-end: Barcode1 at 5', Barcode2 at 3'.
+pub fn match_dual_single_end(seq: &[u8], cfg: &BarcodeConfig) -> MatchResult {
+    let mut candidates = Vec::new();
+    for (i, sample) in cfg.samples.iter().enumerate() {
+        let Some(bc2) = sample.barcode2.as_ref() else {
+            continue;
+        };
+        let Some(d1) = barcode_distance_5p(seq, &sample.barcode1) else {
+            continue;
+        };
+        let Some(d2) = barcode_distance_3p(seq, bc2) else {
+            continue;
+        };
+        if d1 <= cfg.mismatches_1 && d2 <= cfg.mismatches_2 {
+            candidates.push((i, d1 + d2));
+        }
+    }
+    pick_best(&candidates)
+}
+
+/// Match dual-barcode paired-end: Barcode1 at R1 5', Barcode2 at R2 5'.
+pub fn match_dual_paired(r1: &[u8], r2: &[u8], cfg: &BarcodeConfig) -> MatchResult {
+    let mut candidates = Vec::new();
+    for (i, sample) in cfg.samples.iter().enumerate() {
+        let Some(bc2) = sample.barcode2.as_ref() else {
+            continue;
+        };
+        let Some(d1) = barcode_distance_5p(r1, &sample.barcode1) else {
+            continue;
+        };
+        let Some(d2) = barcode_distance_5p(r2, bc2) else {
+            continue;
+        };
+        if d1 <= cfg.mismatches_1 && d2 <= cfg.mismatches_2 {
+            candidates.push((i, d1 + d2));
+        }
+    }
+    pick_best(&candidates)
+}
+
+/// High-level assign for SE read.
+pub fn assign_single(seq: &[u8], cfg: &BarcodeConfig) -> MatchResult {
+    match cfg.mode {
+        DemuxMode::SingleBarcode => match_single(seq, cfg),
+        DemuxMode::DualBarcode => match_dual_single_end(seq, cfg),
+    }
+}
+
+/// High-level assign for PE pair.
+pub fn assign_paired(r1: &[u8], r2: &[u8], cfg: &BarcodeConfig) -> MatchResult {
+    match cfg.mode {
+        DemuxMode::SingleBarcode => match_single(r1, cfg),
+        DemuxMode::DualBarcode => match_dual_paired(r1, r2, cfg),
+    }
+}
+
+pub fn sample_key(sample: &SampleEntry) -> SampleKey {
+    SampleKey::Named(sample.name.clone())
 }
 
 #[cfg(test)]
@@ -171,50 +177,53 @@ mod tests {
     use crate::barcode::config::parse_barcodes_csv;
 
     #[test]
-    fn exact_match() {
-        let cfg = parse_barcodes_csv("NNNATGNN:a\nNNNCCGNN:b\n", 0, 0, false).unwrap();
-        let seq = b"ACGATGTCAAAAAAAA";
-        let r = match_five_prime(seq, &cfg.five_prime, 0);
+    fn dual_pe_exact() {
+        let csv = "SampleNumber,Barcode1,Barcode2\n\
+                   A1,AAGTCCAA,GGAGTACT\n\
+                   A2,GACCTGAA,GGACTTGG\n";
+        let cfg = parse_barcodes_csv(csv, 0, 0).unwrap();
+        let r1 = b"AAGTCCAAAAAAAAAAA";
+        let r2 = b"GGAGTACTCCCCCCCC";
+        let m = assign_paired(r1, r2, &cfg);
         assert_eq!(
-            r,
+            m,
             MatchResult::Match {
-                index: 0,
+                sample_index: 0,
                 distance: 0
             }
         );
-        let umi = extract_five_umi(seq, &cfg.five_prime[0]);
-        assert_eq!(umi, b"ACGTC");
     }
 
     #[test]
-    fn mismatch_and_tie() {
-        let cfg = parse_barcodes_csv("ATG:a\nATC:b\n", 1, 0, false).unwrap();
-        // ATA is distance 1 from both ATG and ATC → ambiguous
-        let r = match_five_prime(b"ATAAAA", &cfg.five_prime, 1);
-        assert!(matches!(r, MatchResult::Ambiguous { .. }));
+    fn dual_pe_mismatch() {
+        let csv = "SampleNumber,Barcode1,Barcode2\ns1,AAAAAAAA,TTTTTTTT\n";
+        let cfg = parse_barcodes_csv(csv, 1, 0).unwrap();
+        // one mismatch in barcode1
+        let r1 = b"AAAAAAATCCCCCCCC";
+        let r2 = b"TTTTTTTTGGGGGGGG";
+        let m = assign_paired(r1, r2, &cfg);
+        assert!(matches!(m, MatchResult::Match { .. }));
     }
 
     #[test]
-    fn no_match_beyond_threshold() {
-        let cfg = parse_barcodes_csv("ATG:a\n", 0, 0, false).unwrap();
-        let r = match_five_prime(b"GGGAAAA", &cfg.five_prime, 0);
-        assert_eq!(r, MatchResult::NoMatch);
-    }
-
-    #[test]
-    fn three_prime_match() {
-        let cfg = parse_barcodes_csv("ATG,NNTTCNN:s1\n", 0, 0, false).unwrap();
-        let three = &cfg.five_prime[0].linked_three_prime;
-        // pattern NNTTCNN, length 7; informative TTC at offsets from end
-        // want ...NNTTCNN at end: e.g. AATTCGG
-        let seq = b"XXXXXXAATTCGG";
-        let r = match_three_prime(seq, three, 0);
+    fn single_barcode() {
+        let csv = "SampleNumber,Barcode1\ns1,ATGATGAT\ns2,CCGTAACG\n";
+        let cfg = parse_barcodes_csv(csv, 0, 0).unwrap();
+        let m = assign_single(b"ATGATGATAAAAAAAA", &cfg);
         assert_eq!(
-            r,
+            m,
             MatchResult::Match {
-                index: 0,
+                sample_index: 0,
                 distance: 0
             }
         );
+    }
+
+    #[test]
+    fn no_match() {
+        let csv = "SampleNumber,Barcode1,Barcode2\ns1,AAAAAAAA,TTTTTTTT\n";
+        let cfg = parse_barcodes_csv(csv, 0, 0).unwrap();
+        let m = assign_paired(b"GGGGGGGGCCCCCCCC", b"CCCCCCCCGGGGGGGG", &cfg);
+        assert_eq!(m, MatchResult::NoMatch);
     }
 }

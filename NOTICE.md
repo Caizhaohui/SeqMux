@@ -1,16 +1,15 @@
 # NOTICE
 
-SeqMux is an independent reimplementation of FASTQ demultiplexing ideas
-inspired by **Ultraplex**:
+SeqMux is an independent FASTQ demultiplexer.
 
-- https://github.com/ulelab/ultraplex
+Trimming ideas (e.g. BWA-style quality trim) follow well-known NGS practice also
+used in tools such as Ultraplex / Cutadapt. SeqMux uses its **own sample barcode
+table format** (`SampleNumber`, `Barcode1`, `Barcode2`) and does **not** implement
+Ultraplex CSV compatibility.
 
-Ultraplex itself contains code derived from **Cutadapt**:
+References:
 
-- https://github.com/marcelm/cutadapt
+- Ultraplex: https://github.com/ulelab/ultraplex
+- Cutadapt: https://github.com/marcelm/cutadapt
 
-SeqMux does **not** copy Ultraplex or Cutadapt source code. Algorithms such as
-BWA-style quality trimming and barcode/UMI semantics are reimplemented from
-documented behaviour for compatibility.
-
-Both Ultraplex and Cutadapt are distributed under the MIT License.
+Both are distributed under the MIT License. SeqMux does not copy their source.

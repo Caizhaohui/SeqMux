@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.1 — 2026-08-14
+
+### Changed
+
+- 3′ Illumina adapter trimming is **on by default** (R1 `AGATCGGAAGAGCACACGTCTGAA`, R2 `AGATCGGAAGAGCGTCGTG`, same as Ultraplex defaults). Use `--no-adapter` to disable; empty `-a` / `--adapter-r2` disables that mate only.
+- Dual-barcode PE `--orientation both` remains the default (unchanged since 0.1.2).
+
+### Docs
+
+- `docs/ULTRAPLEX_BENCH.md`: SeqMux vs Ultraplex speed/assignment benchmark on I464
+- Helper scripts for Ultraplex CSV conversion and count comparison
+
 ## 0.2.0 — 2026-08-13
 
 ### Added

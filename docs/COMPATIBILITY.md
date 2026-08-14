@@ -26,7 +26,7 @@ must equal the Python QC tables. Gzip bytes need not match.
 | Read header `/1` `/2` | follows the swapped physical read | same: header travels with the sequence |
 | Unassigned FASTQ | not written | written unless `--discard-unassigned` |
 | UMI tag `rbc:` | not used (barcodes have no `N`) | added only when barcode patterns contain `N` |
-| Quality / adapter trim | none | off by default; if enabled, runs **after** barcode match |
+| Quality / adapter trim | none | quality off by default; **Illumina 3′ adapter trim on by default** (after barcode match). Use `--no-adapter` for Python-parity sequences |
 
 ## Not compared
 

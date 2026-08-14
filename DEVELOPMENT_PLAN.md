@@ -233,6 +233,11 @@ Real-data / mismatch / benchmark 等重负载遵守上文「HPC / 登录节点�
 - fuzz FASTQ / CSV parser
 - 单细胞 whitelist
 
+### Ultraplex benchmark（已完成对照，见 `docs/ULTRAPLEX_BENCH.md`）
+
+I464 200k pairs、exact / `-q 0`：SeqMux 与 Ultraplex **逐 sample 计数一致**（canonical 与 both）。  
+墙钟约 **10×（8 线程）～36×（1 线程）** 快于 Ultraplex；Ultraplex 必须 `--dont_build_reference`，且勿用本机版 `--ignore_no_match`（TypeError）。
+
 ---
 
 ## 10. 给 coding agent 的下一条任务

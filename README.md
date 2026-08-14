@@ -128,7 +128,7 @@ After assignment (unless `--keep-barcodes`):
 
 Mismatch thresholds: `--mismatches-1` / `--mismatches-2`. Best unique score wins; ties go to `unassigned`. Default is exact match (0). Use `1` only after checking `docs/MISMATCH_QC.md`.
 
-Barcode matching uses the **original 5′ sequence**, then barcodes are trimmed, then quality/adapter trim. 5′ quality trimming therefore cannot eat the barcode.
+Barcode matching uses the **original 5′ sequence**, then barcodes are trimmed, then quality/adapter trim. 5′ quality trimming therefore cannot eat the barcode. 3′ Illumina adapter trimming is **on by default**; use `--no-adapter` to turn it off.
 
 **Orientation vs the lab Python demux:** SeqMux canonicalizes so output R1 carries Barcode1. The I395/I464 Python scripts wrote the Barcode2-bearing mate as R1. Assignment counts match; R1/R2 file contents are swapped relative to those scripts unless `--no-canonicalize` is set. See `docs/COMPATIBILITY.md`.
 
@@ -151,8 +151,9 @@ Barcode matching uses the **original 5′ sequence**, then barcodes are trimmed,
 | `--no-canonicalize` | Do not rotate swapped mates to Barcode1-on-R1 |
 | `--keep-barcodes` | Do not trim barcode bases |
 | `--discard-unassigned` | Drop unassigned reads |
-| `-a / --adapter-r1` | 3′ adapter for R1 |
-| `--adapter-r2` | 3′ adapter for R2 |
+| `-a / --adapter-r1` | 3′ adapter for R1 (default Illumina `AGATCGGAAGAGCACACGTCTGAA`) |
+| `--adapter-r2` | 3′ adapter for R2 (default Illumina `AGATCGGAAGAGCGTCGTG`) |
+| `--no-adapter` | Disable 3′ adapter trimming |
 | `-q / --quality-cutoff-3` | 3′ Phred quality cutoff |
 | `-l / --min-length` | Minimum length after trim |
 | `--force` | Overwrite existing outputs |

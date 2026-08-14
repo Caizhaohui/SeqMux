@@ -338,3 +338,75 @@ fn barcode_match_survives_low_quality_five_prime() {
     assert!(a.contains("@r1"));
     assert!(a.contains("\nCCCCCCCC\n"));
 }
+
+#[test]
+fn default_adapter_trim_and_no_adapter_flag() {
+    let dir = tempdir().unwrap();
+    let fq = dir.path().join("reads.fastq");
+    let bc = dir.path().join("barcodes.csv");
+    let out_on = dir.path().join("out_on");
+    let out_off = dir.path().join("out_off");
+    // After 8 bp barcode trim, remaining ends with Illumina adapter prefix.
+    write_fastq(
+        &fq,
+        &[(
+            "r1",
+            "ATGATGATAAAAAAAAAGATCGGAAGAGC",
+            "IIIIIIIIIIIIIIIIIIIIIIIIIIIII",
+        )],
+    );
+    fs::write(&bc, "SampleNumber,Barcode1\ns1,ATGATGAT\n").unwrap();
+
+    Command::cargo_bin("seqmux")
+        .unwrap()
+        .args([
+            "demux",
+            "-i",
+            fq.to_str().unwrap(),
+            "-b",
+            bc.to_str().unwrap(),
+            "-o",
+            out_on.to_str().unwrap(),
+            "-p",
+            "adon",
+            "-t",
+            "1",
+            "--no-gzip",
+            "--force",
+        ])
+        .assert()
+        .success();
+    let on = fs::read_to_string(out_on.join("adon_s1.fastq")).unwrap();
+    assert!(
+        on.contains("\nAAAAAAAA\n"),
+        "default adapter should trim 3′: {on}"
+    );
+    let summary_on = fs::read_to_string(out_on.join("adon.summary.tsv")).unwrap();
+    assert!(summary_on.contains("adapter_trimmed\t1"));
+
+    Command::cargo_bin("seqmux")
+        .unwrap()
+        .args([
+            "demux",
+            "-i",
+            fq.to_str().unwrap(),
+            "-b",
+            bc.to_str().unwrap(),
+            "-o",
+            out_off.to_str().unwrap(),
+            "-p",
+            "adoff",
+            "-t",
+            "1",
+            "--no-gzip",
+            "--no-adapter",
+            "--force",
+        ])
+        .assert()
+        .success();
+    let off = fs::read_to_string(out_off.join("adoff_s1.fastq")).unwrap();
+    assert!(
+        off.contains("\nAAAAAAAAAGATCGGAAGAGC\n"),
+        "--no-adapter should keep adapter: {off}"
+    );
+}

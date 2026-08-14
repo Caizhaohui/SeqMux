@@ -7,6 +7,11 @@ use crate::pipeline::PipelineOptions;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
+/// Default Illumina TruSeq / Ultraplex-compatible R1 (forward) 3′ adapter.
+pub const DEFAULT_ADAPTER_R1: &str = "AGATCGGAAGAGCACACGTCTGAA";
+/// Default Illumina reverse-read 3′ adapter (Ultraplex `-a2` default).
+pub const DEFAULT_ADAPTER_R2: &str = "AGATCGGAAGAGCGTCGTG";
+
 #[derive(Parser, Debug)]
 #[command(
     name = "seqmux",
@@ -98,13 +103,21 @@ pub struct DemuxArgs {
     #[arg(long = "tso-pattern")]
     pub tso_pattern: Option<String>,
 
-    /// 3' adapter sequence for R1
-    #[arg(short = 'a', long = "adapter-r1")]
-    pub adapter_r1: Option<String>,
+    /// 3' adapter sequence for R1 (Illumina p7 / TruSeq by default)
+    #[arg(
+        short = 'a',
+        long = "adapter-r1",
+        default_value = DEFAULT_ADAPTER_R1
+    )]
+    pub adapter_r1: String,
 
-    /// 3' adapter sequence for R2
-    #[arg(long = "adapter-r2")]
-    pub adapter_r2: Option<String>,
+    /// 3' adapter sequence for R2 (Illumina p5 / reverse by default)
+    #[arg(long = "adapter-r2", default_value = DEFAULT_ADAPTER_R2)]
+    pub adapter_r2: String,
+
+    /// Disable 3′ adapter trimming (overrides -a / --adapter-r2)
+    #[arg(long = "no-adapter")]
+    pub no_adapter: bool,
 
     /// 3' quality cutoff (Phred)
     #[arg(short = 'q', long = "quality-cutoff-3", default_value_t = 0)]
@@ -236,6 +249,22 @@ pub fn run(cli: Cli) -> Result<()> {
     }
 }
 
+/// Resolve adapter sequences: `--no-adapter` disables; empty string disables that mate.
+fn resolve_adapters(args: &DemuxArgs) -> (Option<Vec<u8>>, Option<Vec<u8>>) {
+    if args.no_adapter {
+        return (None, None);
+    }
+    let to_opt = |s: &str| {
+        let t = s.trim();
+        if t.is_empty() {
+            None
+        } else {
+            Some(t.to_ascii_uppercase().into_bytes())
+        }
+    };
+    (to_opt(&args.adapter_r1), to_opt(&args.adapter_r2))
+}
+
 fn run_demux(args: DemuxArgs) -> Result<()> {
     if !args.quiet {
         env_logger::Builder::from_env(
@@ -258,6 +287,8 @@ fn run_demux(args: DemuxArgs) -> Result<()> {
         None => None,
     };
 
+    let (adapter_r1, adapter_r2) = resolve_adapters(&args);
+
     let cfg = ProcessConfig {
         barcodes,
         keep_barcodes: args.keep_barcodes,
@@ -266,8 +297,8 @@ fn run_demux(args: DemuxArgs) -> Result<()> {
         quality_cutoff_5: args.quality_cutoff_5,
         quality_cutoff_3: args.quality_cutoff_3,
         nextseq: args.nextseq,
-        adapter_r1: args.adapter_r1.map(|s| s.into_bytes()),
-        adapter_r2: args.adapter_r2.map(|s| s.into_bytes()),
+        adapter_r1,
+        adapter_r2,
         adapter_error_rate: args.adapter_error_rate,
         min_adapter_overlap: args.min_adapter_overlap,
         tso,
@@ -293,6 +324,20 @@ fn run_demux(args: DemuxArgs) -> Result<()> {
         eprintln!("  samples : {}", cfg.barcodes.samples.len());
         eprintln!("  mode    : {:?}", cfg.barcodes.mode);
         eprintln!("  orient  : {:?}", cfg.orientation);
+        match (&cfg.adapter_r1, &cfg.adapter_r2) {
+            (None, None) => eprintln!("  adapter : off"),
+            (r1, r2) => {
+                eprintln!(
+                    "  adapter : R1={} R2={}",
+                    r1.as_ref()
+                        .map(|s| String::from_utf8_lossy(s).into_owned())
+                        .unwrap_or_else(|| "-".into()),
+                    r2.as_ref()
+                        .map(|s| String::from_utf8_lossy(s).into_owned())
+                        .unwrap_or_else(|| "-".into()),
+                );
+            }
+        }
         eprintln!("  out-dir : {}", args.out_dir.display());
         eprintln!("  threads : {}", args.threads);
     }

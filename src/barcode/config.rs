@@ -12,6 +12,21 @@ pub enum DemuxMode {
     DualBarcode,
 }
 
+/// How dual-barcode PE reads may be oriented on R1/R2.
+///
+/// Amplicon libraries (I395 / I464) typically mix both orientations ~50/50
+/// because inserts ligate in either direction relative to Illumina adapters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OrientationMode {
+    /// Try Barcode1@R1 + Barcode2@R2 and the swapped mates; pick the unique best.
+    #[default]
+    Both,
+    /// Only Barcode1 at R1 5′ and Barcode2 at R2 5′.
+    Canonical,
+    /// Only Barcode2 at R1 5′ and Barcode1 at R2 5′.
+    Swapped,
+}
+
 /// Compiled barcode pattern (supports optional `N` UMI bases).
 #[derive(Debug, Clone)]
 pub struct CompiledBarcode {
@@ -308,6 +323,22 @@ pub fn parse_barcodes_csv(
     } else {
         DemuxMode::SingleBarcode
     };
+
+    if mode == DemuxMode::DualBarcode {
+        let set1: HashSet<&[u8]> = samples.iter().map(|s| s.barcode1.raw.as_slice()).collect();
+        let set2: HashSet<&[u8]> = samples
+            .iter()
+            .filter_map(|s| s.barcode2.as_ref().map(|b| b.raw.as_slice()))
+            .collect();
+        let overlap: Vec<&[u8]> = set1.intersection(&set2).copied().collect();
+        if !overlap.is_empty() {
+            log::warn!(
+                "{} barcode sequence(s) appear as both Barcode1 and Barcode2; \
+                 --orientation both may produce extra ambiguous assignments",
+                overlap.len()
+            );
+        }
+    }
 
     let max_info1 = samples
         .iter()

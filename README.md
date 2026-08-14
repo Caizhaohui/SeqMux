@@ -8,7 +8,7 @@ It demultiplexes single-end and paired-end FASTQ using a **sample barcode table*
 
 - Single-end and paired-end FASTQ (`.fastq` / `.fq` / `.gz`)
 - **SeqMux sample table CSV** (`SampleNumber`, `Barcode1`, `Barcode2`, …)
-- Dual-barcode demux (PE: R1/R2 5′; SE: R1 5′ + R1 3′)
+- Dual-barcode demux (PE: both R1/R2 orientations; SE: R1 5′ + R1 3′)
 - Single-barcode demux (Barcode1 only at R1 5′)
 - Optional `N` bases in barcodes as UMI (written to header as `rbc:`)
 - Hamming-distance matching with mismatch tolerance; ties → unassigned
@@ -116,7 +116,7 @@ Extra columns (`PCR_product`, `rawdata1`, `rawdata2`, `library_round`, `F_primer
 
 | Mode | When | Matching |
 |------|------|----------|
-| **Dual barcode + PE** | `Barcode2` present and `-I` given | `Barcode1` @ R1 5′, `Barcode2` @ R2 5′ |
+| **Dual barcode + PE** | `Barcode2` present and `-I` given | Both orientations: `Barcode1`@R1 5′ + `Barcode2`@R2 5′, **and** `Barcode2`@R1 5′ + `Barcode1`@R2 5′. Swapped mates are rotated so output R1 has Barcode1 (unless `--no-canonicalize`). |
 | **Dual barcode + SE** | `Barcode2` present, no `-I` | `Barcode1` @ R1 5′, `Barcode2` @ R1 3′ |
 | **Single barcode** | no `Barcode2` column / all empty | `Barcode1` @ R1 5′ only |
 
@@ -126,7 +126,11 @@ After assignment (unless `--keep-barcodes`):
 - SE dual: trim Barcode1 from 5′ and Barcode2 from 3′
 - Single: trim Barcode1 from 5′
 
-Mismatch thresholds: `--mismatches-1` / `--mismatches-2`. Best unique score wins; ties go to `unassigned`.
+Mismatch thresholds: `--mismatches-1` / `--mismatches-2`. Best unique score wins; ties go to `unassigned`. Default is exact match (0). Use `1` only after checking `docs/MISMATCH_QC.md`.
+
+Barcode matching uses the **original 5′ sequence**, then barcodes are trimmed, then quality/adapter trim. 5′ quality trimming therefore cannot eat the barcode.
+
+**Orientation vs the lab Python demux:** SeqMux canonicalizes so output R1 carries Barcode1. The I395/I464 Python scripts wrote the Barcode2-bearing mate as R1. Assignment counts match; R1/R2 file contents are swapped relative to those scripts unless `--no-canonicalize` is set. See `docs/COMPATIBILITY.md`.
 
 ## Common options
 
@@ -138,8 +142,13 @@ Mismatch thresholds: `--mismatches-1` / `--mismatches-2`. Best unique score wins
 | `-o / --out-dir` | Output directory |
 | `-p / --prefix` | Output prefix (default `seqmux`) |
 | `-t / --threads` | Worker threads |
+| `--max-reads` | Stop after N reads/pairs (0 = all) |
+| `--skip-reads` | Skip N reads/pairs before processing |
+| `--counts-only` | Count only; do not write FASTQ |
 | `--mismatches-1` | Allowed mismatches for Barcode1 |
 | `--mismatches-2` | Allowed mismatches for Barcode2 |
+| `--orientation` | Dual PE: `both` (default), `canonical`, `swapped` |
+| `--no-canonicalize` | Do not rotate swapped mates to Barcode1-on-R1 |
 | `--keep-barcodes` | Do not trim barcode bases |
 | `--discard-unassigned` | Drop unassigned reads |
 | `-a / --adapter-r1` | 3′ adapter for R1 |

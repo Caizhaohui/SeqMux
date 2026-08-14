@@ -175,3 +175,166 @@ fn reject_ultraplex_format() {
         .failure()
         .stderr(predicate::str::contains("SampleNumber").or(predicate::str::contains("header")));
 }
+
+#[test]
+fn max_reads_stops_early() {
+    let dir = tempdir().unwrap();
+    let fq = dir.path().join("reads.fastq");
+    let bc = dir.path().join("barcodes.csv");
+    let out = dir.path().join("out");
+    write_fastq(
+        &fq,
+        &[
+            ("r1", "ATGATGATAAAAAAAA", "IIIIIIIIIIIIIIII"),
+            ("r2", "ATGATGATAAAAAAAA", "IIIIIIIIIIIIIIII"),
+            ("r3", "ATGATGATAAAAAAAA", "IIIIIIIIIIIIIIII"),
+        ],
+    );
+    fs::write(&bc, "SampleNumber,Barcode1\ns1,ATGATGAT\n").unwrap();
+
+    Command::cargo_bin("seqmux")
+        .unwrap()
+        .args([
+            "demux",
+            "-i",
+            fq.to_str().unwrap(),
+            "-b",
+            bc.to_str().unwrap(),
+            "-o",
+            out.to_str().unwrap(),
+            "-p",
+            "cap",
+            "-t",
+            "1",
+            "--no-gzip",
+            "--max-reads",
+            "2",
+            "--force",
+        ])
+        .assert()
+        .success();
+
+    let summary = fs::read_to_string(out.join("cap.summary.tsv")).unwrap();
+    assert!(summary.contains("total_reads\t2"));
+    assert!(summary.contains("match_rate\t"));
+}
+
+#[test]
+fn skip_reads_then_max_reads() {
+    let dir = tempdir().unwrap();
+    let fq = dir.path().join("reads.fastq");
+    let bc = dir.path().join("barcodes.csv");
+    let out = dir.path().join("out");
+    write_fastq(
+        &fq,
+        &[
+            ("skipme", "GGGGGGGGAAAAAAAA", "IIIIIIIIIIIIIIII"),
+            ("keep1", "ATGATGATAAAAAAAA", "IIIIIIIIIIIIIIII"),
+            ("keep2", "ATGATGATAAAAAAAA", "IIIIIIIIIIIIIIII"),
+        ],
+    );
+    fs::write(&bc, "SampleNumber,Barcode1\ns1,ATGATGAT\n").unwrap();
+
+    Command::cargo_bin("seqmux")
+        .unwrap()
+        .args([
+            "demux",
+            "-i",
+            fq.to_str().unwrap(),
+            "-b",
+            bc.to_str().unwrap(),
+            "-o",
+            out.to_str().unwrap(),
+            "-p",
+            "sk",
+            "-t",
+            "1",
+            "--no-gzip",
+            "--skip-reads",
+            "1",
+            "--max-reads",
+            "1",
+            "--force",
+        ])
+        .assert()
+        .success();
+
+    let summary = fs::read_to_string(out.join("sk.summary.tsv")).unwrap();
+    assert!(summary.contains("total_reads\t1"));
+    let fq_out = fs::read_to_string(out.join("sk_s1.fastq")).unwrap();
+    assert!(fq_out.contains("@keep1"));
+    assert!(!fq_out.contains("@keep2"));
+    assert!(!fq_out.contains("@skipme"));
+}
+
+#[test]
+fn counts_only_writes_summary_not_fastq() {
+    let dir = tempdir().unwrap();
+    let fq = dir.path().join("reads.fastq");
+    let bc = dir.path().join("barcodes.csv");
+    let out = dir.path().join("out");
+    write_fastq(&fq, &[("r1", "ATGATGATAAAAAAAA", "IIIIIIIIIIIIIIII")]);
+    fs::write(&bc, "SampleNumber,Barcode1\ns1,ATGATGAT\n").unwrap();
+
+    Command::cargo_bin("seqmux")
+        .unwrap()
+        .args([
+            "demux",
+            "-i",
+            fq.to_str().unwrap(),
+            "-b",
+            bc.to_str().unwrap(),
+            "-o",
+            out.to_str().unwrap(),
+            "-p",
+            "co",
+            "-t",
+            "2",
+            "--counts-only",
+            "--force",
+        ])
+        .assert()
+        .success();
+
+    let summary = fs::read_to_string(out.join("co.summary.tsv")).unwrap();
+    assert!(summary.contains("assigned\t1"));
+    assert!(!out.join("co_s1.fastq.gz").exists());
+    assert!(!out.join("co_s1.fastq").exists());
+}
+
+#[test]
+fn barcode_match_survives_low_quality_five_prime() {
+    let dir = tempdir().unwrap();
+    let fq = dir.path().join("reads.fastq");
+    let bc = dir.path().join("barcodes.csv");
+    let out = dir.path().join("out");
+    // Barcode ATGATGAT has Phred 0; insert is high quality.
+    write_fastq(&fq, &[("r1", "ATGATGATCCCCCCCC", "!!!!!!!!IIIIIIII")]);
+    fs::write(&bc, "SampleNumber,Barcode1\ns1,ATGATGAT\n").unwrap();
+
+    Command::cargo_bin("seqmux")
+        .unwrap()
+        .args([
+            "demux",
+            "-i",
+            fq.to_str().unwrap(),
+            "-b",
+            bc.to_str().unwrap(),
+            "-o",
+            out.to_str().unwrap(),
+            "-p",
+            "q5",
+            "-t",
+            "1",
+            "--no-gzip",
+            "--quality-cutoff-5",
+            "20",
+            "--force",
+        ])
+        .assert()
+        .success();
+
+    let a = fs::read_to_string(out.join("q5_s1.fastq")).unwrap();
+    assert!(a.contains("@r1"));
+    assert!(a.contains("\nCCCCCCCC\n"));
+}

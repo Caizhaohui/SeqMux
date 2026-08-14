@@ -1,4 +1,4 @@
-use crate::barcode::{load_barcodes_csv, TsoPattern};
+use crate::barcode::{load_barcodes_csv, OrientationMode, TsoPattern};
 use crate::error::{AppError, Result};
 use crate::fastq::{validate_fastq, InputReader};
 use crate::pipeline::run_pipeline;
@@ -86,6 +86,14 @@ pub struct DemuxArgs {
     #[arg(long = "keep-barcodes", visible_alias = "kbc")]
     pub keep_barcodes: bool,
 
+    /// Dual-barcode PE orientation: both (default), canonical (BC1@R1), or swapped (BC2@R1)
+    #[arg(long = "orientation", value_enum, default_value_t = OrientationArg::Both)]
+    pub orientation: OrientationArg,
+
+    /// Keep original R1/R2 assignment when a swapped barcode orientation matches
+    #[arg(long = "no-canonicalize")]
+    pub no_canonicalize: bool,
+
     /// TSO pattern (N=UMI, I=ignore/trim)
     #[arg(long = "tso-pattern")]
     pub tso_pattern: Option<String>,
@@ -130,6 +138,18 @@ pub struct DemuxArgs {
     #[arg(long = "chunk-reads", default_value_t = 4096)]
     pub chunk_reads: usize,
 
+    /// Stop after this many reads/pairs (0 = no limit)
+    #[arg(long = "max-reads", default_value_t = 0)]
+    pub max_reads: u64,
+
+    /// Skip this many reads/pairs before processing
+    #[arg(long = "skip-reads", default_value_t = 0)]
+    pub skip_reads: u64,
+
+    /// Count assignments only; do not write FASTQ files
+    #[arg(long = "counts-only")]
+    pub counts_only: bool,
+
     /// Summary TSV path (default: <out-dir>/<prefix>.summary.tsv)
     #[arg(long = "summary")]
     pub summary: Option<PathBuf>,
@@ -145,6 +165,36 @@ pub struct DemuxArgs {
     /// Log level
     #[arg(long = "log-level", default_value = "info")]
     pub log_level: LogLevel,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum OrientationArg {
+    /// Match both Barcode1@R1/Barcode2@R2 and the swapped mates (recommended for amplicon PE)
+    Both,
+    /// Only Barcode1 at R1 5′ and Barcode2 at R2 5′
+    Canonical,
+    /// Only Barcode2 at R1 5′ and Barcode1 at R2 5′
+    Swapped,
+}
+
+impl From<OrientationArg> for OrientationMode {
+    fn from(value: OrientationArg) -> Self {
+        match value {
+            OrientationArg::Both => OrientationMode::Both,
+            OrientationArg::Canonical => OrientationMode::Canonical,
+            OrientationArg::Swapped => OrientationMode::Swapped,
+        }
+    }
+}
+
+impl std::fmt::Display for OrientationArg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OrientationArg::Both => write!(f, "both"),
+            OrientationArg::Canonical => write!(f, "canonical"),
+            OrientationArg::Swapped => write!(f, "swapped"),
+        }
+    }
 }
 
 #[derive(Parser, Debug)]
@@ -222,6 +272,9 @@ fn run_demux(args: DemuxArgs) -> Result<()> {
         min_adapter_overlap: args.min_adapter_overlap,
         tso,
         phred_offset: 33,
+        orientation: args.orientation.into(),
+        canonicalize: !args.no_canonicalize,
+        counts_only: args.counts_only,
     };
 
     let reader = if let Some(ref i2) = args.input2 {
@@ -239,6 +292,7 @@ fn run_demux(args: DemuxArgs) -> Result<()> {
         eprintln!("  barcodes: {}", args.barcodes.display());
         eprintln!("  samples : {}", cfg.barcodes.samples.len());
         eprintln!("  mode    : {:?}", cfg.barcodes.mode);
+        eprintln!("  orient  : {:?}", cfg.orientation);
         eprintln!("  out-dir : {}", args.out_dir.display());
         eprintln!("  threads : {}", args.threads);
     }
@@ -256,6 +310,8 @@ fn run_demux(args: DemuxArgs) -> Result<()> {
             chunk_reads: args.chunk_reads,
             summary: args.summary.as_deref(),
             quiet: args.quiet,
+            max_reads: args.max_reads,
+            skip_reads: args.skip_reads,
         },
     )?;
 

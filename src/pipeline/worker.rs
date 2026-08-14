@@ -1,6 +1,6 @@
 use crate::barcode::{
     assign_paired, assign_single, extract_umi_3p, extract_umi_5p, sample_key, BarcodeConfig,
-    DemuxMode, MatchResult, SampleKey, TsoPattern,
+    DemuxMode, MatchResult, OrientationMode, SampleKey, TsoPattern,
 };
 use crate::fastq::{OwnedFastqRecord, ReadOrPair};
 use crate::output::{Mate, OutputKey};
@@ -24,6 +24,12 @@ pub struct ProcessConfig {
     pub min_adapter_overlap: usize,
     pub tso: Option<TsoPattern>,
     pub phred_offset: u8,
+    /// Dual-barcode PE orientation policy.
+    pub orientation: OrientationMode,
+    /// When a swapped orientation matches, swap mates so output R1 has Barcode1.
+    pub canonicalize: bool,
+    /// Count assignments but do not write FASTQ (real-data QC / smoke tests).
+    pub counts_only: bool,
 }
 
 #[derive(Debug)]
@@ -116,9 +122,7 @@ fn process_single(
     stats: &mut ChunkStats,
 ) {
     stats.total_reads += 1;
-    quality_trim_record(&mut rec, cfg, stats);
-    adapter_trim_record(&mut rec, cfg.adapter_r1.as_deref(), cfg, stats);
-
+    // Match on the original 5′ sequence before quality/adapter trim.
     let result = assign_single(&rec.sequence, &cfg.barcodes);
     let (sample, umi, ambiguous) = apply_assignment_single(&mut rec, result, cfg);
 
@@ -128,6 +132,8 @@ fn process_single(
     if let Some(ref tso) = cfg.tso {
         apply_tso(&mut rec, tso);
     }
+    quality_trim_record(&mut rec, cfg, stats);
+    adapter_trim_record(&mut rec, cfg.adapter_r1.as_deref(), cfg, stats);
     if rec.len() < cfg.min_length {
         stats.too_short += 1;
         return;
@@ -141,6 +147,9 @@ fn process_single(
         return;
     }
     stats.record_sample(&sample);
+    if cfg.counts_only {
+        return;
+    }
     let key = OutputKey {
         sample,
         mate: Mate::Single,
@@ -159,12 +168,13 @@ fn process_pair(
     stats: &mut ChunkStats,
 ) {
     stats.total_reads += 1;
-    quality_trim_record(&mut r1, cfg, stats);
-    quality_trim_record(&mut r2, cfg, stats);
-    adapter_trim_record(&mut r1, cfg.adapter_r1.as_deref(), cfg, stats);
-    adapter_trim_record(&mut r2, cfg.adapter_r2.as_deref(), cfg, stats);
-
-    let result = assign_paired(&r1.sequence, &r2.sequence, &cfg.barcodes);
+    // Match on original 5′ bases before quality/adapter trim.
+    let result = assign_paired(&r1.sequence, &r2.sequence, &cfg.barcodes, cfg.orientation);
+    match result {
+        MatchResult::Match { swapped: true, .. } => stats.orientation_swapped += 1,
+        MatchResult::Match { swapped: false, .. } => stats.orientation_canonical += 1,
+        _ => {}
+    }
     let (sample, umi, ambiguous) = apply_assignment_paired(&mut r1, &mut r2, result, cfg);
 
     if ambiguous {
@@ -173,6 +183,10 @@ fn process_pair(
     if let Some(ref tso) = cfg.tso {
         apply_tso(&mut r1, tso);
     }
+    quality_trim_record(&mut r1, cfg, stats);
+    quality_trim_record(&mut r2, cfg, stats);
+    adapter_trim_record(&mut r1, cfg.adapter_r1.as_deref(), cfg, stats);
+    adapter_trim_record(&mut r2, cfg.adapter_r2.as_deref(), cfg, stats);
     if r1.len() < cfg.min_length || r2.len() < cfg.min_length {
         stats.too_short += 1;
         return;
@@ -187,6 +201,9 @@ fn process_pair(
         return;
     }
     stats.record_sample(&sample);
+    if cfg.counts_only {
+        return;
+    }
     let k1 = OutputKey {
         sample: sample.clone(),
         mate: Mate::R1,
@@ -251,22 +268,53 @@ fn apply_assignment_paired(
     match result {
         MatchResult::NoMatch => (SampleKey::Unassigned, Vec::new(), false),
         MatchResult::Ambiguous { .. } => (SampleKey::Unassigned, Vec::new(), true),
-        MatchResult::Match { sample_index, .. } => {
+        MatchResult::Match {
+            sample_index,
+            swapped,
+            ..
+        } => {
             let sample = &cfg.barcodes.samples[sample_index];
-            let mut umi = extract_umi_5p(&r1.sequence, &sample.barcode1);
-            if let Some(bc2) = sample.barcode2.as_ref() {
-                umi.extend_from_slice(&extract_umi_5p(&r2.sequence, bc2));
-            }
+            let (umi, trim_swapped) = if swapped {
+                let mut umi = extract_umi_5p(&r2.sequence, &sample.barcode1);
+                if let Some(bc2) = sample.barcode2.as_ref() {
+                    umi.extend_from_slice(&extract_umi_5p(&r1.sequence, bc2));
+                }
+                if cfg.canonicalize {
+                    std::mem::swap(r1, r2);
+                    (umi, false)
+                } else {
+                    (umi, true)
+                }
+            } else {
+                let mut umi = extract_umi_5p(&r1.sequence, &sample.barcode1);
+                if let Some(bc2) = sample.barcode2.as_ref() {
+                    umi.extend_from_slice(&extract_umi_5p(&r2.sequence, bc2));
+                }
+                (umi, false)
+            };
 
             if !cfg.keep_barcodes {
-                let l1 = sample.barcode1.pattern_len;
-                if r1.len() >= l1 {
-                    r1.trim_front(l1);
-                }
-                if let Some(bc2) = sample.barcode2.as_ref() {
-                    let l2 = bc2.pattern_len;
-                    if r2.len() >= l2 {
-                        r2.trim_front(l2);
+                if trim_swapped {
+                    if let Some(bc2) = sample.barcode2.as_ref() {
+                        let l2 = bc2.pattern_len;
+                        if r1.len() >= l2 {
+                            r1.trim_front(l2);
+                        }
+                    }
+                    let l1 = sample.barcode1.pattern_len;
+                    if r2.len() >= l1 {
+                        r2.trim_front(l1);
+                    }
+                } else {
+                    let l1 = sample.barcode1.pattern_len;
+                    if r1.len() >= l1 {
+                        r1.trim_front(l1);
+                    }
+                    if let Some(bc2) = sample.barcode2.as_ref() {
+                        let l2 = bc2.pattern_len;
+                        if r2.len() >= l2 {
+                            r2.trim_front(l2);
+                        }
                     }
                 }
             }

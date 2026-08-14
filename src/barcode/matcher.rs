@@ -1,4 +1,7 @@
-use super::config::{BarcodeConfig, CompiledBarcode, DemuxMode, SampleEntry, SampleKey};
+use super::config::{
+    BarcodeConfig, CompiledBarcode, DemuxMode, OrientationMode, SampleEntry, SampleKey,
+};
+use std::collections::HashSet;
 
 /// Match result for sample assignment.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -6,6 +9,8 @@ pub enum MatchResult {
     Match {
         sample_index: usize,
         distance: usize,
+        /// True when dual-barcode PE matched Barcode2@R1 + Barcode1@R2.
+        swapped: bool,
     },
     Ambiguous {
         distance: usize,
@@ -92,9 +97,37 @@ fn pick_best(candidates: &[(usize, usize)]) -> MatchResult {
         MatchResult::Match {
             sample_index: winners[0],
             distance: best,
+            swapped: false,
         }
     } else {
         MatchResult::Ambiguous { distance: best }
+    }
+}
+
+/// Pick unique best among (sample_index, distance, swapped) candidates.
+///
+/// Same sample matching both orientations at the same distance is not ambiguous;
+/// canonical (not swapped) wins.
+fn pick_best_oriented(candidates: &[(usize, usize, bool)]) -> MatchResult {
+    if candidates.is_empty() {
+        return MatchResult::NoMatch;
+    }
+    let best = candidates.iter().map(|(_, d, _)| *d).min().unwrap();
+    let at_best: Vec<(usize, bool)> = candidates
+        .iter()
+        .filter(|(_, d, _)| *d == best)
+        .map(|(i, _, swapped)| (*i, *swapped))
+        .collect();
+    let samples: HashSet<usize> = at_best.iter().map(|(i, _)| *i).collect();
+    if samples.len() != 1 {
+        return MatchResult::Ambiguous { distance: best };
+    }
+    let sample_index = *samples.iter().next().unwrap();
+    let swapped = at_best.iter().all(|(_, swapped)| *swapped);
+    MatchResult::Match {
+        sample_index,
+        distance: best,
+        swapped,
     }
 }
 
@@ -131,24 +164,51 @@ pub fn match_dual_single_end(seq: &[u8], cfg: &BarcodeConfig) -> MatchResult {
     pick_best(&candidates)
 }
 
-/// Match dual-barcode paired-end: Barcode1 at R1 5', Barcode2 at R2 5'.
-pub fn match_dual_paired(r1: &[u8], r2: &[u8], cfg: &BarcodeConfig) -> MatchResult {
+/// Match dual-barcode paired-end.
+///
+/// Canonical: Barcode1 at R1 5′, Barcode2 at R2 5′.
+/// Swapped:   Barcode2 at R1 5′, Barcode1 at R2 5′.
+pub fn match_dual_paired(
+    r1: &[u8],
+    r2: &[u8],
+    cfg: &BarcodeConfig,
+    orientation: OrientationMode,
+) -> MatchResult {
+    let allow_canonical = matches!(
+        orientation,
+        OrientationMode::Both | OrientationMode::Canonical
+    );
+    let allow_swapped = matches!(
+        orientation,
+        OrientationMode::Both | OrientationMode::Swapped
+    );
     let mut candidates = Vec::new();
     for (i, sample) in cfg.samples.iter().enumerate() {
         let Some(bc2) = sample.barcode2.as_ref() else {
             continue;
         };
-        let Some(d1) = barcode_distance_5p(r1, &sample.barcode1) else {
-            continue;
-        };
-        let Some(d2) = barcode_distance_5p(r2, bc2) else {
-            continue;
-        };
-        if d1 <= cfg.mismatches_1 && d2 <= cfg.mismatches_2 {
-            candidates.push((i, d1 + d2));
+        if allow_canonical {
+            if let (Some(d1), Some(d2)) = (
+                barcode_distance_5p(r1, &sample.barcode1),
+                barcode_distance_5p(r2, bc2),
+            ) {
+                if d1 <= cfg.mismatches_1 && d2 <= cfg.mismatches_2 {
+                    candidates.push((i, d1 + d2, false));
+                }
+            }
+        }
+        if allow_swapped {
+            if let (Some(d1), Some(d2)) = (
+                barcode_distance_5p(r2, &sample.barcode1),
+                barcode_distance_5p(r1, bc2),
+            ) {
+                if d1 <= cfg.mismatches_1 && d2 <= cfg.mismatches_2 {
+                    candidates.push((i, d1 + d2, true));
+                }
+            }
         }
     }
-    pick_best(&candidates)
+    pick_best_oriented(&candidates)
 }
 
 /// High-level assign for SE read.
@@ -160,10 +220,15 @@ pub fn assign_single(seq: &[u8], cfg: &BarcodeConfig) -> MatchResult {
 }
 
 /// High-level assign for PE pair.
-pub fn assign_paired(r1: &[u8], r2: &[u8], cfg: &BarcodeConfig) -> MatchResult {
+pub fn assign_paired(
+    r1: &[u8],
+    r2: &[u8],
+    cfg: &BarcodeConfig,
+    orientation: OrientationMode,
+) -> MatchResult {
     match cfg.mode {
         DemuxMode::SingleBarcode => match_single(r1, cfg),
-        DemuxMode::DualBarcode => match_dual_paired(r1, r2, cfg),
+        DemuxMode::DualBarcode => match_dual_paired(r1, r2, cfg, orientation),
     }
 }
 
@@ -184,14 +249,37 @@ mod tests {
         let cfg = parse_barcodes_csv(csv, 0, 0).unwrap();
         let r1 = b"AAGTCCAAAAAAAAAAA";
         let r2 = b"GGAGTACTCCCCCCCC";
-        let m = assign_paired(r1, r2, &cfg);
+        let m = assign_paired(r1, r2, &cfg, OrientationMode::Both);
         assert_eq!(
             m,
             MatchResult::Match {
                 sample_index: 0,
-                distance: 0
+                distance: 0,
+                swapped: false,
             }
         );
+    }
+
+    #[test]
+    fn dual_pe_swapped_orientation() {
+        let csv = "SampleNumber,Barcode1,Barcode2\n\
+                   A1,AAGTCCAA,GGAGTACT\n\
+                   A2,GACCTGAA,GGACTTGG\n";
+        let cfg = parse_barcodes_csv(csv, 0, 0).unwrap();
+        // mates swapped vs sample table
+        let r1 = b"GGAGTACTCCCCCCCC";
+        let r2 = b"AAGTCCAAAAAAAAAAA";
+        let m = assign_paired(r1, r2, &cfg, OrientationMode::Both);
+        assert_eq!(
+            m,
+            MatchResult::Match {
+                sample_index: 0,
+                distance: 0,
+                swapped: true,
+            }
+        );
+        let canonical_only = assign_paired(r1, r2, &cfg, OrientationMode::Canonical);
+        assert_eq!(canonical_only, MatchResult::NoMatch);
     }
 
     #[test]
@@ -201,7 +289,7 @@ mod tests {
         // one mismatch in barcode1
         let r1 = b"AAAAAAATCCCCCCCC";
         let r2 = b"TTTTTTTTGGGGGGGG";
-        let m = assign_paired(r1, r2, &cfg);
+        let m = assign_paired(r1, r2, &cfg, OrientationMode::Both);
         assert!(matches!(m, MatchResult::Match { .. }));
     }
 
@@ -214,7 +302,8 @@ mod tests {
             m,
             MatchResult::Match {
                 sample_index: 0,
-                distance: 0
+                distance: 0,
+                swapped: false,
             }
         );
     }
@@ -223,7 +312,12 @@ mod tests {
     fn no_match() {
         let csv = "SampleNumber,Barcode1,Barcode2\ns1,AAAAAAAA,TTTTTTTT\n";
         let cfg = parse_barcodes_csv(csv, 0, 0).unwrap();
-        let m = assign_paired(b"GGGGGGGGCCCCCCCC", b"CCCCCCCCGGGGGGGG", &cfg);
+        let m = assign_paired(
+            b"GGGGGGGGCCCCCCCC",
+            b"CCCCCCCCGGGGGGGG",
+            &cfg,
+            OrientationMode::Both,
+        );
         assert_eq!(m, MatchResult::NoMatch);
     }
 }

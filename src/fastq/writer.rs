@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 /// Writer that can emit plain or gzip FASTQ.
 pub enum FastqWriter {
     Plain(BufWriter<File>),
-    Gzip(BufWriter<GzEncoder<File>>),
+    Gzip(Box<BufWriter<GzEncoder<File>>>),
 }
 
 impl FastqWriter {
@@ -24,7 +24,10 @@ impl FastqWriter {
         if gzip {
             let level = Compression::new(compression_level.clamp(1, 9));
             let enc = GzEncoder::new(file, level);
-            Ok(Self::Gzip(BufWriter::with_capacity(256 * 1024, enc)))
+            Ok(Self::Gzip(Box::new(BufWriter::with_capacity(
+                256 * 1024,
+                enc,
+            ))))
         } else {
             Ok(Self::Plain(BufWriter::with_capacity(256 * 1024, file)))
         }
@@ -49,7 +52,9 @@ impl FastqWriter {
                 w.flush()?;
             }
             Self::Gzip(w) => {
-                let enc = w.into_inner().map_err(|e| AppError::Io(e.into_error()))?;
+                let enc = (*w)
+                    .into_inner()
+                    .map_err(|e| AppError::Io(e.into_error()))?;
                 enc.finish()?;
             }
         }

@@ -15,6 +15,10 @@ pub struct ChunkStats {
     pub ambiguous: u64,
     pub too_short: u64,
     pub five_prime_matched_three_prime_missing: u64,
+    /// Dual-barcode PE assigned in Barcode1@R1 / Barcode2@R2 orientation.
+    pub orientation_canonical: u64,
+    /// Dual-barcode PE assigned in Barcode2@R1 / Barcode1@R2 orientation.
+    pub orientation_swapped: u64,
     pub per_sample: BTreeMap<String, u64>,
 }
 
@@ -28,6 +32,8 @@ impl ChunkStats {
         self.ambiguous += other.ambiguous;
         self.too_short += other.too_short;
         self.five_prime_matched_three_prime_missing += other.five_prime_matched_three_prime_missing;
+        self.orientation_canonical += other.orientation_canonical;
+        self.orientation_swapped += other.orientation_swapped;
         for (k, v) in &other.per_sample {
             *self.per_sample.entry(k.clone()).or_insert(0) += v;
         }
@@ -94,6 +100,18 @@ impl RunStats {
                 format_count(self.five_prime_matched_three_prime_missing)
             );
         }
+        if self.orientation_canonical + self.orientation_swapped > 0 {
+            eprintln!(
+                "Orientation R1=BC1: {:>12}  ({:5.2}%)",
+                format_count(self.orientation_canonical),
+                100.0 * self.orientation_canonical as f64 / t
+            );
+            eprintln!(
+                "Orientation R1=BC2: {:>12}  ({:5.2}%)",
+                format_count(self.orientation_swapped),
+                100.0 * self.orientation_swapped as f64 / t
+            );
+        }
         if !self.per_sample.is_empty() {
             eprintln!();
             eprintln!("Per-sample counts:");
@@ -121,6 +139,14 @@ impl RunStats {
             self.five_prime_matched_three_prime_missing
         )
         .ok();
+        writeln!(buf, "orientation_canonical\t{}", self.orientation_canonical).ok();
+        writeln!(buf, "orientation_swapped\t{}", self.orientation_swapped).ok();
+        let match_rate = if self.total_reads == 0 {
+            0.0
+        } else {
+            self.assigned as f64 / self.total_reads as f64
+        };
+        writeln!(buf, "match_rate\t{match_rate:.6}").ok();
         for (name, count) in &self.per_sample {
             writeln!(buf, "sample:{name}\t{count}").ok();
         }

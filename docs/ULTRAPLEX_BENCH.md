@@ -1,5 +1,7 @@
 # SeqMux vs Ultraplex benchmark
 
+Historical comparison of SeqMux **v0.2.0** (2026-08-14). Current I395/I464 production numbers are in `docs/REAL_DATA.md`.
+
 Date: 2026-08-14  
 Ultraplex: conda env `PCR` (`ulelab/ultraplex`, Python 3.9)  
 SeqMux: `target/release/seqmux` v0.2.0  

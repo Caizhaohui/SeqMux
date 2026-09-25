@@ -80,11 +80,10 @@ impl OwnedFastqRecord {
         }
     }
 
-    /// Serialize to FASTQ text (with trailing newline after quality).
-    pub fn to_fastq_bytes(&self) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(
-            1 + self.name.len() + 1 + self.sequence.len() + 3 + self.qualities.len() + 1,
-        );
+    /// Append serialized FASTQ record directly to the provided buffer without temporary allocation.
+    #[inline]
+    pub fn append_fastq_to(&self, buf: &mut Vec<u8>) {
+        buf.reserve(1 + self.name.len() + 1 + self.sequence.len() + 3 + self.qualities.len() + 1);
         buf.push(b'@');
         buf.extend_from_slice(&self.name);
         buf.push(b'\n');
@@ -92,6 +91,14 @@ impl OwnedFastqRecord {
         buf.extend_from_slice(b"\n+\n");
         buf.extend_from_slice(&self.qualities);
         buf.push(b'\n');
+    }
+
+    /// Serialize to FASTQ text (with trailing newline after quality).
+    pub fn to_fastq_bytes(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(
+            1 + self.name.len() + 1 + self.sequence.len() + 3 + self.qualities.len() + 1,
+        );
+        self.append_fastq_to(&mut buf);
         buf
     }
 }

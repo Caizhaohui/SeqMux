@@ -70,8 +70,38 @@ impl CompiledBarcode {
 pub struct SampleEntry {
     pub id: usize,
     pub name: String,
+    pub sanitized_label: String,
     pub barcode1: CompiledBarcode,
     pub barcode2: Option<CompiledBarcode>,
+}
+
+/// Compact 2-bit packing for 8-bp ACGT barcode:
+/// A = 00, C = 01, G = 10, T = 11.
+/// Returns None if length < 8 or contains non-ACGT bases (e.g. N).
+#[inline(always)]
+pub fn pack_8bp_2bit(seq: &[u8]) -> Option<u16> {
+    if seq.len() < 8 {
+        return None;
+    }
+    let mut code = 0u16;
+    for &b in &seq[..8] {
+        let v = match b {
+            b'A' | b'a' => 0u16,
+            b'C' | b'c' => 1u16,
+            b'G' | b'g' => 2u16,
+            b'T' | b't' => 3u16,
+            _ => return None,
+        };
+        code = (code << 2) | v;
+    }
+    Some(code)
+}
+
+/// Exact fast path matcher for fixed 8-bp A/C/G/T dual barcodes with mismatch = 0.
+#[derive(Debug, Clone)]
+pub struct ExactDual8Matcher {
+    /// Maps packed (BC1 << 16 | BC2) to sample index in samples list.
+    pub table: HashMap<u32, usize>,
 }
 
 /// Unique sample output key.
@@ -99,6 +129,8 @@ pub struct BarcodeConfig {
     pub mismatches_1: usize,
     /// Allowed mismatches for Barcode2.
     pub mismatches_2: usize,
+    /// Exact 8-bp dual-barcode fast path lookup table when applicable.
+    pub fast_exact_8bp_pe: Option<ExactDual8Matcher>,
 }
 
 /// TSO pattern: N → UMI, I → trim only.
@@ -274,7 +306,7 @@ pub fn parse_barcodes_csv(
                 "line {line_no}: sample name '{name}' sanitizes to '{label}', which collides with earlier sample '{prev}'"
             )));
         }
-        sanitized_seen.insert(label, name.clone());
+        sanitized_seen.insert(label.clone(), name.clone());
 
         let bc1_raw = rec.get(col_bc1).unwrap_or("").trim();
         if bc1_raw.is_empty() {
@@ -314,6 +346,7 @@ pub fn parse_barcodes_csv(
         samples.push(SampleEntry {
             id,
             name,
+            sanitized_label: label,
             barcode1,
             barcode2,
         });
@@ -378,11 +411,47 @@ pub fn parse_barcodes_csv(
         }
     }
 
+    let fast_exact_8bp_pe =
+        if mode == DemuxMode::DualBarcode && mismatches_1 == 0 && mismatches_2 == 0 {
+            let mut table = HashMap::with_capacity(samples.len());
+            let mut eligible = true;
+            for (i, s) in samples.iter().enumerate() {
+                let Some(bc2) = s.barcode2.as_ref() else {
+                    eligible = false;
+                    break;
+                };
+                if s.barcode1.pattern_len != 8 || bc2.pattern_len != 8 {
+                    eligible = false;
+                    break;
+                }
+                if !s.barcode1.umi_positions.is_empty() || !bc2.umi_positions.is_empty() {
+                    eligible = false;
+                    break;
+                }
+                let (Some(c1), Some(c2)) =
+                    (pack_8bp_2bit(&s.barcode1.raw), pack_8bp_2bit(&bc2.raw))
+                else {
+                    eligible = false;
+                    break;
+                };
+                let key = ((c1 as u32) << 16) | (c2 as u32);
+                table.insert(key, i);
+            }
+            if eligible {
+                Some(ExactDual8Matcher { table })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
     Ok(BarcodeConfig {
         samples,
         mode,
         mismatches_1,
         mismatches_2,
+        fast_exact_8bp_pe,
     })
 }
 

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.3.0 — 2026-09-25
+
+Release candidate. Not tagged.
+
+### Changed
+
+- 3′ adapter search keeps stride-1 seed completeness and uses a fixed packed-8-mer lookup plus short-overlap candidate filtering. Generic DP remains the correctness reference.
+- Paired-end inputs with `-t > 1` decompress R1 and R2 on two reader threads. One ordered writer is unchanged.
+- Recommended I395/I464 production settings: **`-t 12`**, **`--compression-level 1`**, mismatch 0, adapter trimming on, `--orientation both` with canonicalization. The CLI compression default stays 6.
+
+### Validated
+
+Full gzip-in / gzip-level-1-out runs on a 16-CPU allocation. Per-sample assignment matched the lab Python exact reference for all 35 I464 samples and all 18 I395 samples. Gzip streams were integrity-checked; they were not compared byte-for-byte with another artifact.
+
+I464: 140,771,720 pairs; wall 406.80 s (6 min 47 s); 346,047 pairs/s; assigned 87,477,095; unassigned 53,294,625; canonical 45,393,500; swapped 42,083,595; adapter trimmed 1,240,406; peak RSS 155,860 kB; output 10,901,284,829 B.
+
+I395: 60,523,000 pairs; wall 177.03 s (2 min 57 s); 341,880 pairs/s; assigned 39,455,648; unassigned 21,067,352; canonical 18,606,371; swapped 20,849,277; adapter trimmed 795,256; peak RSS 128,228 kB; output 5,168,089,121 B.
+
+Checked on representative samples: `gzip -t`, paired record counts, paired read IDs, head/tail record order against the input, canonical Barcode1-on-R1, and SHA-256 of those files.
+
 ## 0.2.1 — 2026-08-14
 
 ### Changed

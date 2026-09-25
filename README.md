@@ -4,7 +4,39 @@
 
 It demultiplexes single-end and paired-end FASTQ using a **sample barcode table** (dual or single barcode), with quality/adapter trimming and multi-threaded streaming I/O. No Python, Conda, pigz, or SLURM required.
 
-## Features (v0.1)
+## Production workflow (I395 / I464)
+
+Validated on a 16-CPU allocation (`qcpu_18i`). Use exact matching, default adapter trimming, and gzip level 1. **`-t 12`** had the lowest median wall time among 8, 12, and 16 on the 2-million-pair I464 production path.
+
+```bash
+seqmux demux \
+  -i mix_1.fq.gz \
+  -I mix_2.fq.gz \
+  -b sample_barcodes.csv \
+  -o results \
+  -p seqmux \
+  -t 12 \
+  --compression-level 1
+```
+
+| Setting | Value |
+|---------|--------|
+| Threads | 12 workers (R1/R2 decompress concurrently) |
+| Mismatches | `--mismatches-1 0 --mismatches-2 0` (defaults) |
+| Adapter | on (Illumina R1/R2 defaults); `--no-adapter` to disable |
+| Compression | `--compression-level 1` (CLI default remains 6) |
+| Orientation | `both`, canonicalized so output R1 carries Barcode1 |
+
+Observed full-dataset throughput (gzip in, gzip level 1 out, 16-CPU allocation):
+
+| Dataset | Pairs | Wall | Throughput | Assigned | Samples vs Python |
+|---------|------:|-----:|-----------:|---------:|-------------------|
+| I464 | 140,771,720 | 6 min 47 s (406.80 s) | 346,047 pairs/s | 87,477,095 | all 35 |
+| I395 | 60,523,000 | 2 min 57 s (177.03 s) | 341,880 pairs/s | 39,455,648 | all 18 |
+
+Assignment counts match the lab Python exact demux. Representative outputs passed gzip integrity, paired counts, paired IDs, order, and canonical orientation checks. Gzip files were not shown to be byte-identical to another run. Details: `docs/REAL_DATA.md`.
+
+## Features (v0.3)
 
 - Single-end and paired-end FASTQ (`.fastq` / `.fq` / `.gz`)
 - **SeqMux sample table CSV** (`SampleNumber`, `Barcode1`, `Barcode2`, …)

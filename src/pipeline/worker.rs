@@ -1,11 +1,11 @@
 use crate::barcode::{
-    assign_paired, assign_single, extract_umi_3p, extract_umi_5p, sample_key, BarcodeConfig,
-    DemuxMode, MatchResult, OrientationMode, SampleKey, TsoPattern,
+    assign_paired, assign_single, extract_umi_3p, extract_umi_5p, BarcodeConfig, DemuxMode,
+    MatchResult, OrientationMode, TsoPattern,
 };
 use crate::fastq::{OwnedFastqRecord, ReadOrPair};
-use crate::output::{Mate, OutputKey};
+use crate::output::{Mate, OutputKey, UNASSIGNED_SAMPLE_ID};
 use crate::stats::ChunkStats;
-use crate::trim::{nextseq_trim_index, quality_trim_bounds, trim_3p_adapter};
+use crate::trim::{nextseq_trim_index, quality_trim_bounds, CompiledAdapter};
 use std::collections::HashMap;
 
 /// Processing parameters shared by workers.
@@ -18,8 +18,8 @@ pub struct ProcessConfig {
     pub quality_cutoff_5: u8,
     pub quality_cutoff_3: u8,
     pub nextseq: bool,
-    pub adapter_r1: Option<Vec<u8>>,
-    pub adapter_r2: Option<Vec<u8>>,
+    pub adapter_r1: Option<CompiledAdapter>,
+    pub adapter_r2: Option<CompiledAdapter>,
     pub adapter_error_rate: f32,
     pub min_adapter_overlap: usize,
     pub tso: Option<TsoPattern>,
@@ -47,7 +47,7 @@ pub struct ProcessedChunk {
 
 pub fn process_chunk(chunk: InputChunk, cfg: &ProcessConfig) -> ProcessedChunk {
     let mut outputs: HashMap<OutputKey, Vec<u8>> = HashMap::new();
-    let mut stats = ChunkStats::default();
+    let mut stats = ChunkStats::new(cfg.barcodes.samples.len());
 
     for item in chunk.records {
         match item {
@@ -92,20 +92,11 @@ fn quality_trim_record(rec: &mut OwnedFastqRecord, cfg: &ProcessConfig) -> bool 
     }
 }
 
-fn adapter_trim_record(
-    rec: &mut OwnedFastqRecord,
-    adapter: Option<&[u8]>,
-    cfg: &ProcessConfig,
-) -> bool {
+fn adapter_trim_record(rec: &mut OwnedFastqRecord, adapter: Option<&CompiledAdapter>) -> bool {
     let Some(adapter) = adapter else {
         return false;
     };
-    let (new_end, trimmed, _) = trim_3p_adapter(
-        &rec.sequence,
-        adapter,
-        cfg.adapter_error_rate,
-        cfg.min_adapter_overlap,
-    );
+    let (new_end, trimmed, _) = adapter.trim_3p(&rec.sequence);
     if trimmed {
         rec.trim_to(0, new_end);
     }
@@ -121,7 +112,7 @@ fn process_single(
     stats.total_reads += 1;
     // Match on the original 5′ sequence before quality/adapter trim.
     let result = assign_single(&rec.sequence, &cfg.barcodes);
-    let (sample, umi, ambiguous) = apply_assignment_single(&mut rec, result, cfg);
+    let (sample_idx, umi, ambiguous) = apply_assignment_single(&mut rec, result, cfg);
 
     if ambiguous {
         stats.ambiguous += 1;
@@ -132,7 +123,7 @@ fn process_single(
     if quality_trim_record(&mut rec, cfg) {
         stats.quality_trimmed += 1;
     }
-    if adapter_trim_record(&mut rec, cfg.adapter_r1.as_deref(), cfg) {
+    if adapter_trim_record(&mut rec, cfg.adapter_r1.as_ref()) {
         stats.adapter_trimmed += 1;
     }
     if rec.len() < cfg.min_length {
@@ -143,22 +134,19 @@ fn process_single(
         rec.append_umi(&umi);
     }
 
-    if matches!(sample, SampleKey::Unassigned) && cfg.discard_unassigned {
-        stats.record_sample(&sample);
+    if sample_idx.is_none() && cfg.discard_unassigned {
+        stats.record_sample_opt(sample_idx);
         return;
     }
-    stats.record_sample(&sample);
+    stats.record_sample_opt(sample_idx);
     if cfg.counts_only {
         return;
     }
     let key = OutputKey {
-        sample,
+        sample_id: sample_idx.unwrap_or(UNASSIGNED_SAMPLE_ID),
         mate: Mate::Single,
     };
-    outputs
-        .entry(key)
-        .or_default()
-        .extend_from_slice(&rec.to_fastq_bytes());
+    rec.append_fastq_to(outputs.entry(key).or_default());
 }
 
 fn process_pair(
@@ -176,7 +164,7 @@ fn process_pair(
         MatchResult::Match { swapped: false, .. } => stats.orientation_canonical += 1,
         _ => {}
     }
-    let (sample, umi, ambiguous) = apply_assignment_paired(&mut r1, &mut r2, result, cfg);
+    let (sample_idx, umi, ambiguous) = apply_assignment_paired(&mut r1, &mut r2, result, cfg);
 
     if ambiguous {
         stats.ambiguous += 1;
@@ -189,8 +177,8 @@ fn process_pair(
     if q1 || q2 {
         stats.quality_trimmed += 1;
     }
-    let a1 = adapter_trim_record(&mut r1, cfg.adapter_r1.as_deref(), cfg);
-    let a2 = adapter_trim_record(&mut r2, cfg.adapter_r2.as_deref(), cfg);
+    let a1 = adapter_trim_record(&mut r1, cfg.adapter_r1.as_ref());
+    let a2 = adapter_trim_record(&mut r2, cfg.adapter_r2.as_ref());
     if a1 || a2 {
         stats.adapter_trimmed += 1;
     }
@@ -203,40 +191,35 @@ fn process_pair(
         r2.append_umi(&umi);
     }
 
-    if matches!(sample, SampleKey::Unassigned) && cfg.discard_unassigned {
-        stats.record_sample(&sample);
+    if sample_idx.is_none() && cfg.discard_unassigned {
+        stats.record_sample_opt(sample_idx);
         return;
     }
-    stats.record_sample(&sample);
+    stats.record_sample_opt(sample_idx);
     if cfg.counts_only {
         return;
     }
+    let sid = sample_idx.unwrap_or(UNASSIGNED_SAMPLE_ID);
     let k1 = OutputKey {
-        sample: sample.clone(),
+        sample_id: sid,
         mate: Mate::R1,
     };
     let k2 = OutputKey {
-        sample,
+        sample_id: sid,
         mate: Mate::R2,
     };
-    outputs
-        .entry(k1)
-        .or_default()
-        .extend_from_slice(&r1.to_fastq_bytes());
-    outputs
-        .entry(k2)
-        .or_default()
-        .extend_from_slice(&r2.to_fastq_bytes());
+    r1.append_fastq_to(outputs.entry(k1).or_default());
+    r2.append_fastq_to(outputs.entry(k2).or_default());
 }
 
 fn apply_assignment_single(
     rec: &mut OwnedFastqRecord,
     result: MatchResult,
     cfg: &ProcessConfig,
-) -> (SampleKey, Vec<u8>, bool) {
+) -> (Option<usize>, Vec<u8>, bool) {
     match result {
-        MatchResult::NoMatch => (SampleKey::Unassigned, Vec::new(), false),
-        MatchResult::Ambiguous { .. } => (SampleKey::Unassigned, Vec::new(), true),
+        MatchResult::NoMatch => (None, Vec::new(), false),
+        MatchResult::Ambiguous { .. } => (None, Vec::new(), true),
         MatchResult::Match { sample_index, .. } => {
             let sample = &cfg.barcodes.samples[sample_index];
             let mut umi = extract_umi_5p(&rec.sequence, &sample.barcode1);
@@ -261,7 +244,7 @@ fn apply_assignment_single(
                     rec.trim_front(bc1_len);
                 }
             }
-            (sample_key(sample), umi, false)
+            (Some(sample_index), umi, false)
         }
     }
 }
@@ -271,10 +254,10 @@ fn apply_assignment_paired(
     r2: &mut OwnedFastqRecord,
     result: MatchResult,
     cfg: &ProcessConfig,
-) -> (SampleKey, Vec<u8>, bool) {
+) -> (Option<usize>, Vec<u8>, bool) {
     match result {
-        MatchResult::NoMatch => (SampleKey::Unassigned, Vec::new(), false),
-        MatchResult::Ambiguous { .. } => (SampleKey::Unassigned, Vec::new(), true),
+        MatchResult::NoMatch => (None, Vec::new(), false),
+        MatchResult::Ambiguous { .. } => (None, Vec::new(), true),
         MatchResult::Match {
             sample_index,
             swapped,
@@ -325,7 +308,7 @@ fn apply_assignment_paired(
                     }
                 }
             }
-            (sample_key(sample), umi, false)
+            (Some(sample_index), umi, false)
         }
     }
 }

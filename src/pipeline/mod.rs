@@ -39,7 +39,7 @@ pub fn run_pipeline(
 ) -> Result<RunStats> {
     crate::util::validate_prefix(opts.prefix)?;
     let is_paired = match reader {
-        InputReader::Paired(_) => true,
+        InputReader::Paired(_) | InputReader::ConcurrentPaired(_) => true,
         InputReader::Single(_) => false,
     };
     let plan = crate::output::OutputPlan::build(&crate::output::OutputPlanParams {
@@ -100,31 +100,59 @@ pub fn run_pipeline(
     let max_reads = opts.max_reads;
     let skip_reads = opts.skip_reads;
     let reader_handle = thread::spawn(move || -> Result<u64> {
-        skip_items(&mut reader, skip_reads)?;
-        let mut chunk_id = 0u64;
-        let mut n_read = 0u64;
-        let mut batch = Vec::with_capacity(chunk_reads);
-        while let Some(chunk) = next_chunk(
-            &mut reader,
-            &mut chunk_id,
-            &mut batch,
-            chunk_reads,
-            max_reads,
-            &mut n_read,
-        )? {
-            if job_tx.send(chunk).is_err() {
-                return Err(AppError::WorkerFailure("workers disconnected".into()));
+        match reader {
+            InputReader::ConcurrentPaired(mut cr) => {
+                let mut n_chunks = 0u64;
+                while let Some((chunk_id, pairs)) = cr.next_paired_chunk()? {
+                    n_chunks += 1;
+                    if job_tx
+                        .send(InputChunk {
+                            id: chunk_id,
+                            records: pairs,
+                        })
+                        .is_err()
+                    {
+                        return Err(AppError::WorkerFailure("workers disconnected".into()));
+                    }
+                }
+                cr.finish()?;
+                Ok(n_chunks)
+            }
+            mut other_reader => {
+                skip_items(&mut other_reader, skip_reads)?;
+                let mut chunk_id = 0u64;
+                let mut n_read = 0u64;
+                let mut batch = Vec::with_capacity(chunk_reads);
+                while let Some(chunk) = next_chunk(
+                    &mut other_reader,
+                    &mut chunk_id,
+                    &mut batch,
+                    chunk_reads,
+                    max_reads,
+                    &mut n_read,
+                )? {
+                    if job_tx.send(chunk).is_err() {
+                        return Err(AppError::WorkerFailure("workers disconnected".into()));
+                    }
+                }
+                Ok(chunk_id)
             }
         }
-        Ok(chunk_id)
     });
 
+    let sample_labels: Vec<String> = cfg
+        .barcodes
+        .samples
+        .iter()
+        .map(|s| s.sanitized_label.clone())
+        .collect();
     let mut writer = OrderedWriter::new(
         opts.out_dir,
         opts.prefix,
         opts.gzip,
         opts.compression_level,
         opts.force,
+        sample_labels,
     );
     let mut received = 0u64;
     let start = Instant::now();
@@ -169,12 +197,19 @@ fn run_serial(
     opts: &PipelineOptions<'_>,
     chunk_reads: usize,
 ) -> Result<RunStats> {
+    let sample_labels: Vec<String> = cfg
+        .barcodes
+        .samples
+        .iter()
+        .map(|s| s.sanitized_label.clone())
+        .collect();
     let mut writer = OrderedWriter::new(
         opts.out_dir,
         opts.prefix,
         opts.gzip,
         opts.compression_level,
         opts.force,
+        sample_labels,
     );
     let mut chunk_id = 0u64;
     let mut n_read = 0u64;

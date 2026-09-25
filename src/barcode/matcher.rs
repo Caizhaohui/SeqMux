@@ -1,7 +1,7 @@
 use super::config::{
-    BarcodeConfig, CompiledBarcode, DemuxMode, OrientationMode, SampleEntry, SampleKey,
+    pack_8bp_2bit, BarcodeConfig, CompiledBarcode, DemuxMode, ExactDual8Matcher, OrientationMode,
+    SampleEntry, SampleKey,
 };
-use std::collections::HashSet;
 
 /// Match result for sample assignment.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,6 +18,65 @@ pub enum MatchResult {
     NoMatch,
 }
 
+impl ExactDual8Matcher {
+    /// Zero-allocation, O(1) table lookup for 8-bp dual-barcode PE matching.
+    #[inline]
+    pub fn match_paired(&self, r1: &[u8], r2: &[u8], orientation: OrientationMode) -> MatchResult {
+        let (c1, c2) = match (pack_8bp_2bit(r1), pack_8bp_2bit(r2)) {
+            (Some(a), Some(b)) => (a, b),
+            _ => return MatchResult::NoMatch,
+        };
+
+        let allow_canonical = matches!(
+            orientation,
+            OrientationMode::Both | OrientationMode::Canonical
+        );
+        let allow_swapped = matches!(
+            orientation,
+            OrientationMode::Both | OrientationMode::Swapped
+        );
+
+        let hit_can = if allow_canonical {
+            let key = ((c1 as u32) << 16) | (c2 as u32);
+            self.table.get(&key).copied()
+        } else {
+            None
+        };
+
+        let hit_swap = if allow_swapped {
+            let key = ((c2 as u32) << 16) | (c1 as u32);
+            self.table.get(&key).copied()
+        } else {
+            None
+        };
+
+        match (hit_can, hit_swap) {
+            (None, None) => MatchResult::NoMatch,
+            (Some(idx), None) => MatchResult::Match {
+                sample_index: idx,
+                distance: 0,
+                swapped: false,
+            },
+            (None, Some(idx)) => MatchResult::Match {
+                sample_index: idx,
+                distance: 0,
+                swapped: true,
+            },
+            (Some(i1), Some(i2)) => {
+                if i1 == i2 {
+                    MatchResult::Match {
+                        sample_index: i1,
+                        distance: 0,
+                        swapped: false,
+                    }
+                } else {
+                    MatchResult::Ambiguous { distance: 0 }
+                }
+            }
+        }
+    }
+}
+
 /// Hamming distance between observed bases and expected (equal length).
 pub fn hamming(observed: &[u8], expected: &[u8]) -> usize {
     observed
@@ -28,6 +87,7 @@ pub fn hamming(observed: &[u8], expected: &[u8]) -> usize {
 }
 
 /// Extract bases at given positions from a sequence.
+#[allow(dead_code)]
 pub fn extract_at(seq: &[u8], positions: &[usize]) -> Option<Vec<u8>> {
     let mut out = Vec::with_capacity(positions.len());
     for &p in positions {
@@ -40,29 +100,43 @@ pub fn extract_at(seq: &[u8], positions: &[usize]) -> Option<Vec<u8>> {
 }
 
 /// Distance of barcode against the 5' end of a read.
+/// Zero-allocation in-place comparison.
+#[inline]
 pub fn barcode_distance_5p(seq: &[u8], bc: &CompiledBarcode) -> Option<usize> {
     if seq.len() < bc.pattern_len {
         return None;
     }
-    let observed = extract_at(seq, &bc.informative_positions)?;
-    Some(hamming(&observed, &bc.expected_bases))
+    let mut dist = 0;
+    for (&pos, &expected) in bc.informative_positions.iter().zip(&bc.expected_bases) {
+        if seq[pos].to_ascii_uppercase() != expected {
+            dist += 1;
+        }
+    }
+    Some(dist)
 }
 
 /// Distance of barcode against the 3' end of a read (pattern aligned to suffix).
+/// Zero-allocation in-place comparison.
+#[inline]
 pub fn barcode_distance_3p(seq: &[u8], bc: &CompiledBarcode) -> Option<usize> {
     if seq.len() < bc.pattern_len {
         return None;
     }
     let start = seq.len() - bc.pattern_len;
-    let mut observed = Vec::with_capacity(bc.informative_positions.len());
-    for &p in &bc.informative_positions {
-        observed.push(seq[start + p].to_ascii_uppercase());
+    let mut dist = 0;
+    for (&pos, &expected) in bc.informative_positions.iter().zip(&bc.expected_bases) {
+        if seq[start + pos].to_ascii_uppercase() != expected {
+            dist += 1;
+        }
     }
-    Some(hamming(&observed, &bc.expected_bases))
+    Some(dist)
 }
 
 /// Extract UMI bases from the 5' barcode region.
 pub fn extract_umi_5p(seq: &[u8], bc: &CompiledBarcode) -> Vec<u8> {
+    if bc.umi_positions.is_empty() {
+        return Vec::new();
+    }
     bc.umi_positions
         .iter()
         .filter_map(|&p| seq.get(p).copied())
@@ -72,7 +146,7 @@ pub fn extract_umi_5p(seq: &[u8], bc: &CompiledBarcode) -> Vec<u8> {
 
 /// Extract UMI bases from the 3' barcode region.
 pub fn extract_umi_3p(seq: &[u8], bc: &CompiledBarcode) -> Vec<u8> {
-    if seq.len() < bc.pattern_len {
+    if seq.len() < bc.pattern_len || bc.umi_positions.is_empty() {
         return Vec::new();
     }
     let start = seq.len() - bc.pattern_len;
@@ -83,6 +157,7 @@ pub fn extract_umi_3p(seq: &[u8], bc: &CompiledBarcode) -> Vec<u8> {
         .collect()
 }
 
+#[allow(dead_code)]
 fn pick_best(candidates: &[(usize, usize)]) -> MatchResult {
     if candidates.is_empty() {
         return MatchResult::NoMatch;
@@ -104,10 +179,7 @@ fn pick_best(candidates: &[(usize, usize)]) -> MatchResult {
     }
 }
 
-/// Pick unique best among (sample_index, distance, swapped) candidates.
-///
-/// Same sample matching both orientations at the same distance is not ambiguous;
-/// canonical (not swapped) wins.
+#[allow(dead_code)]
 fn pick_best_oriented(candidates: &[(usize, usize, bool)]) -> MatchResult {
     if candidates.is_empty() {
         return MatchResult::NoMatch;
@@ -118,11 +190,16 @@ fn pick_best_oriented(candidates: &[(usize, usize, bool)]) -> MatchResult {
         .filter(|(_, d, _)| *d == best)
         .map(|(i, _, swapped)| (*i, *swapped))
         .collect();
-    let samples: HashSet<usize> = at_best.iter().map(|(i, _)| *i).collect();
-    if samples.len() != 1 {
+    let mut unique_samples = Vec::new();
+    for (i, _) in &at_best {
+        if !unique_samples.contains(i) {
+            unique_samples.push(*i);
+        }
+    }
+    if unique_samples.len() != 1 {
         return MatchResult::Ambiguous { distance: best };
     }
-    let sample_index = *samples.iter().next().unwrap();
+    let sample_index = unique_samples[0];
     let swapped = at_best.iter().all(|(_, swapped)| *swapped);
     MatchResult::Match {
         sample_index,
@@ -133,20 +210,44 @@ fn pick_best_oriented(candidates: &[(usize, usize, bool)]) -> MatchResult {
 
 /// Match single-end or R1-only using Barcode1 at 5'.
 pub fn match_single(seq: &[u8], cfg: &BarcodeConfig) -> MatchResult {
-    let mut candidates = Vec::new();
+    let mut best_dist = usize::MAX;
+    let mut best_sample = usize::MAX;
+    let mut is_ambiguous = false;
+
     for (i, sample) in cfg.samples.iter().enumerate() {
         if let Some(d) = barcode_distance_5p(seq, &sample.barcode1) {
             if d <= cfg.mismatches_1 {
-                candidates.push((i, d));
+                if d < best_dist {
+                    best_dist = d;
+                    best_sample = i;
+                    is_ambiguous = false;
+                } else if d == best_dist {
+                    is_ambiguous = true;
+                }
             }
         }
     }
-    pick_best(&candidates)
+    if best_dist == usize::MAX {
+        MatchResult::NoMatch
+    } else if is_ambiguous {
+        MatchResult::Ambiguous {
+            distance: best_dist,
+        }
+    } else {
+        MatchResult::Match {
+            sample_index: best_sample,
+            distance: best_dist,
+            swapped: false,
+        }
+    }
 }
 
 /// Match dual-barcode single-end: Barcode1 at 5', Barcode2 at 3'.
 pub fn match_dual_single_end(seq: &[u8], cfg: &BarcodeConfig) -> MatchResult {
-    let mut candidates = Vec::new();
+    let mut best_dist = usize::MAX;
+    let mut best_sample = usize::MAX;
+    let mut is_ambiguous = false;
+
     for (i, sample) in cfg.samples.iter().enumerate() {
         let Some(bc2) = sample.barcode2.as_ref() else {
             continue;
@@ -158,16 +259,32 @@ pub fn match_dual_single_end(seq: &[u8], cfg: &BarcodeConfig) -> MatchResult {
             continue;
         };
         if d1 <= cfg.mismatches_1 && d2 <= cfg.mismatches_2 {
-            candidates.push((i, d1 + d2));
+            let d = d1 + d2;
+            if d < best_dist {
+                best_dist = d;
+                best_sample = i;
+                is_ambiguous = false;
+            } else if d == best_dist {
+                is_ambiguous = true;
+            }
         }
     }
-    pick_best(&candidates)
+    if best_dist == usize::MAX {
+        MatchResult::NoMatch
+    } else if is_ambiguous {
+        MatchResult::Ambiguous {
+            distance: best_dist,
+        }
+    } else {
+        MatchResult::Match {
+            sample_index: best_sample,
+            distance: best_dist,
+            swapped: false,
+        }
+    }
 }
 
-/// Match dual-barcode paired-end.
-///
-/// Canonical: Barcode1 at R1 5′, Barcode2 at R2 5′.
-/// Swapped:   Barcode2 at R1 5′, Barcode1 at R2 5′.
+/// Match dual-barcode paired-end fallback using running state (no heap allocations).
 pub fn match_dual_paired(
     r1: &[u8],
     r2: &[u8],
@@ -182,7 +299,12 @@ pub fn match_dual_paired(
         orientation,
         OrientationMode::Both | OrientationMode::Swapped
     );
-    let mut candidates = Vec::new();
+
+    let mut best_dist = usize::MAX;
+    let mut best_sample = usize::MAX;
+    let mut best_swapped = false;
+    let mut is_ambiguous = false;
+
     for (i, sample) in cfg.samples.iter().enumerate() {
         let Some(bc2) = sample.barcode2.as_ref() else {
             continue;
@@ -193,7 +315,15 @@ pub fn match_dual_paired(
                 barcode_distance_5p(r2, bc2),
             ) {
                 if d1 <= cfg.mismatches_1 && d2 <= cfg.mismatches_2 {
-                    candidates.push((i, d1 + d2, false));
+                    let d = d1 + d2;
+                    if d < best_dist {
+                        best_dist = d;
+                        best_sample = i;
+                        best_swapped = false;
+                        is_ambiguous = false;
+                    } else if d == best_dist && best_sample != i {
+                        is_ambiguous = true;
+                    }
                 }
             }
         }
@@ -203,12 +333,33 @@ pub fn match_dual_paired(
                 barcode_distance_5p(r1, bc2),
             ) {
                 if d1 <= cfg.mismatches_1 && d2 <= cfg.mismatches_2 {
-                    candidates.push((i, d1 + d2, true));
+                    let d = d1 + d2;
+                    if d < best_dist {
+                        best_dist = d;
+                        best_sample = i;
+                        best_swapped = true;
+                        is_ambiguous = false;
+                    } else if d == best_dist && best_sample != i {
+                        is_ambiguous = true;
+                    }
                 }
             }
         }
     }
-    pick_best_oriented(&candidates)
+
+    if best_dist == usize::MAX {
+        MatchResult::NoMatch
+    } else if is_ambiguous {
+        MatchResult::Ambiguous {
+            distance: best_dist,
+        }
+    } else {
+        MatchResult::Match {
+            sample_index: best_sample,
+            distance: best_dist,
+            swapped: best_swapped,
+        }
+    }
 }
 
 /// High-level assign for SE read.
@@ -219,13 +370,16 @@ pub fn assign_single(seq: &[u8], cfg: &BarcodeConfig) -> MatchResult {
     }
 }
 
-/// High-level assign for PE pair.
+/// High-level assign for PE pair (routes to fast_exact_8bp_pe when available).
 pub fn assign_paired(
     r1: &[u8],
     r2: &[u8],
     cfg: &BarcodeConfig,
     orientation: OrientationMode,
 ) -> MatchResult {
+    if let Some(ref fast) = cfg.fast_exact_8bp_pe {
+        return fast.match_paired(r1, r2, orientation);
+    }
     match cfg.mode {
         DemuxMode::SingleBarcode => match_single(r1, cfg),
         DemuxMode::DualBarcode => match_dual_paired(r1, r2, cfg, orientation),

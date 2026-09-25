@@ -1,7 +1,7 @@
 use super::worker::ProcessedChunk;
 use crate::error::Result;
 use crate::fastq::{check_output_path, FastqWriter};
-use crate::output::{output_path, Mate, OutputKey};
+use crate::output::{output_path_for_label, Mate, OutputKey, UNASSIGNED_SAMPLE_ID};
 use crate::stats::RunStats;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -13,6 +13,7 @@ pub struct OrderedWriter {
     gzip: bool,
     compression_level: u32,
     force: bool,
+    sample_labels: Vec<String>,
     writers: HashMap<OutputKey, FastqWriter>,
     pending: BTreeMap<u64, ProcessedChunk>,
     next_expected: u64,
@@ -26,6 +27,7 @@ impl OrderedWriter {
         gzip: bool,
         compression_level: u32,
         force: bool,
+        sample_labels: Vec<String>,
     ) -> Self {
         Self {
             out_dir: out_dir.to_path_buf(),
@@ -33,10 +35,11 @@ impl OrderedWriter {
             gzip,
             compression_level,
             force,
+            sample_labels: sample_labels.clone(),
             writers: HashMap::new(),
             pending: BTreeMap::new(),
             next_expected: 0,
-            stats: RunStats::default(),
+            stats: RunStats::new(sample_labels),
         }
     }
 
@@ -68,16 +71,18 @@ impl OrderedWriter {
                 continue;
             }
             if !self.writers.contains_key(&key) {
-                let path = output_path(
-                    &self.out_dir,
-                    &self.prefix,
-                    &key.sample,
-                    key.mate,
-                    self.gzip,
-                );
+                let label = if key.sample_id == UNASSIGNED_SAMPLE_ID {
+                    "unassigned"
+                } else if let Some(l) = self.sample_labels.get(key.sample_id) {
+                    l.as_str()
+                } else {
+                    "unknown"
+                };
+                let path =
+                    output_path_for_label(&self.out_dir, &self.prefix, label, key.mate, self.gzip);
                 check_output_path(&path, self.force)?;
                 let w = FastqWriter::create(&path, self.gzip, self.compression_level)?;
-                self.writers.insert(key.clone(), w);
+                self.writers.insert(key, w);
             }
             let w = self.writers.get_mut(&key).unwrap();
             w.write_all(&data)?;
@@ -129,7 +134,7 @@ mod tests {
     #[test]
     fn ordered_writer_happy_path_out_of_order() {
         let dir = tempdir().unwrap();
-        let mut writer = OrderedWriter::new(dir.path(), "test", false, 1, true);
+        let mut writer = OrderedWriter::new(dir.path(), "test", false, 1, true, Vec::new());
         // Push 1, then 0, then 2
         assert!(writer.push(make_chunk(1)).is_ok());
         assert_eq!(writer.next_expected, 0);
@@ -143,7 +148,7 @@ mod tests {
     #[test]
     fn ordered_writer_rejects_duplicate_already_written() {
         let dir = tempdir().unwrap();
-        let mut writer = OrderedWriter::new(dir.path(), "test", false, 1, true);
+        let mut writer = OrderedWriter::new(dir.path(), "test", false, 1, true, Vec::new());
         assert!(writer.push(make_chunk(0)).is_ok());
         assert_eq!(writer.next_expected, 1);
         let err = writer.push(make_chunk(0)).unwrap_err();
@@ -153,7 +158,7 @@ mod tests {
     #[test]
     fn ordered_writer_rejects_duplicate_pending() {
         let dir = tempdir().unwrap();
-        let mut writer = OrderedWriter::new(dir.path(), "test", false, 1, true);
+        let mut writer = OrderedWriter::new(dir.path(), "test", false, 1, true, Vec::new());
         assert!(writer.push(make_chunk(2)).is_ok());
         let err = writer.push(make_chunk(2)).unwrap_err();
         assert!(err.to_string().contains("already pending"));
@@ -162,7 +167,7 @@ mod tests {
     #[test]
     fn ordered_writer_rejects_missing_chunk_on_finish() {
         let dir = tempdir().unwrap();
-        let mut writer = OrderedWriter::new(dir.path(), "test", false, 1, true);
+        let mut writer = OrderedWriter::new(dir.path(), "test", false, 1, true, Vec::new());
         // Push 0 and 2; chunk 1 is missing
         assert!(writer.push(make_chunk(0)).is_ok());
         assert!(writer.push(make_chunk(2)).is_ok());

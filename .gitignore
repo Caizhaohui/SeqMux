@@ -11,3 +11,5 @@ Cargo.lock.bak
 /tmp/
 /.cargo/config.toml
 *.summary.tsv
+__pycache__/
+*.pyc

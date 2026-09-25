@@ -4,6 +4,7 @@ use crate::fastq::{validate_fastq, InputReader};
 use crate::pipeline::run_pipeline;
 use crate::pipeline::worker::ProcessConfig;
 use crate::pipeline::PipelineOptions;
+use crate::trim::CompiledAdapter;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
@@ -287,7 +288,13 @@ fn run_demux(args: DemuxArgs) -> Result<()> {
         None => None,
     };
 
-    let (adapter_r1, adapter_r2) = resolve_adapters(&args);
+    let (raw_adapter_r1, raw_adapter_r2) = resolve_adapters(&args);
+    let adapter_r1 = raw_adapter_r1
+        .as_deref()
+        .map(|s| CompiledAdapter::new(s, args.adapter_error_rate, args.min_adapter_overlap));
+    let adapter_r2 = raw_adapter_r2
+        .as_deref()
+        .map(|s| CompiledAdapter::new(s, args.adapter_error_rate, args.min_adapter_overlap));
 
     let cfg = ProcessConfig {
         barcodes,
@@ -322,7 +329,17 @@ fn run_demux(args: DemuxArgs) -> Result<()> {
     }
 
     let reader = if let Some(ref i2) = args.input2 {
-        InputReader::paired(&args.input, i2)?
+        if args.threads > 1 {
+            InputReader::concurrent_paired(
+                &args.input,
+                i2,
+                args.chunk_reads,
+                args.skip_reads,
+                args.max_reads,
+            )?
+        } else {
+            InputReader::paired(&args.input, i2)?
+        }
     } else {
         InputReader::single(&args.input)?
     };
@@ -343,10 +360,10 @@ fn run_demux(args: DemuxArgs) -> Result<()> {
                 eprintln!(
                     "  adapter : R1={} R2={}",
                     r1.as_ref()
-                        .map(|s| String::from_utf8_lossy(s).into_owned())
+                        .map(|a| String::from_utf8_lossy(a.sequence()).into_owned())
                         .unwrap_or_else(|| "-".into()),
                     r2.as_ref()
-                        .map(|s| String::from_utf8_lossy(s).into_owned())
+                        .map(|a| String::from_utf8_lossy(a.sequence()).into_owned())
                         .unwrap_or_else(|| "-".into()),
                 );
             }

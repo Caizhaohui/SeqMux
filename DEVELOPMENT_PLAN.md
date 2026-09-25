@@ -3,9 +3,9 @@
 > 工具名：`seqmux`  
 > 目标平台：Linux x86_64 / Windows x86_64（MSVC）  
 > 语言：Rust stable  
-> 文档日期：2026-08-13
+> 文档日期：2026-09-25
 
-本文件是 **SeqMux 当前** 的开发计划。v0.1 已按样本 barcode 表（`SampleNumber,Barcode1,Barcode2`）落地；下文记录实测结论，并规划 v0.2。
+**当前状态：v0.3.0 release candidate。** 生产配置与全量数字见 `docs/REAL_DATA.md`。第 2–8 节是到 v0.2.1 为止的历史记录，不是未完成工作。v0.2.0 与 v0.2.1 已打 tag。
 
 早期 Ultraplex 重写草案（`ultraplex-rs`、Ultraplex CSV、`--three-prime-only`）已废弃，不再作为实现目标。
 
@@ -86,15 +86,17 @@ v0.1 冻结范围仍有效：无 GUI、无 BAM/FASTA、无 UMI dedup、无 Pytho
 
 SeqMux 规范化方向是 **Barcode1 → 输出 R1**。实验室 Python 脚本把 Barcode2 端写成输出 R1。下游若依赖旧脚本的 R1/R2 约定，用 `--no-canonicalize`。
 
-### 3.3 仍未修、留给 v0.2 的实测观察
+### 3.3 v0.2 之前的观察（历史记录）
 
-1. **~38% unmatched 仍在**（全量 53.3M pairs）。Top unmatched 大量是 **1-mismatch**（例如 D7 `CGCTATGT+GGAACGTT` vs 读到 `GGAACGTA`，209k）。默认 mismatch=0 与实验室脚本一致；`--mismatches-1/2 1` 的收益/错分风险需要在真实数据上定量。
-2. **Barcode 在 quality/adapter trim 之后才匹配。** 默认 cutoff=0 时无影响；用户开 `-q` / `-q5` 可能切掉 5′ barcode。v0.2 应改为：先匹配并记下 trim 坐标，再 quality/adapter。
-3. **全量 1.4 亿 pair 尚未用 SeqMux 跑通。** 子样本与 fixture 已覆盖正确性；v0.2 要做全量回归 + 与 Python 逐 sample 计数对照。
-4. **无 `--max-reads`。** 大文件冒烟测试只能先切分子样本。
-5. **gzip 是 flate2/miniz 默认 backend**，全量墙钟可能明显慢于 pigz Python 路径。先测再决定是否加 `zlib-rs` feature。
-6. **progress 偏粗**（每 50 chunk）。1.4 亿 pair 需要 reads/s 与 ETA。
-7. **样本表有 `library_round` / `PCR_product` / primers**，demux 忽略它们。v0.2 可选把 round/fragment 写入 summary，不做分析。
+下列条目是 0.1.x 当时的笔记。除第 1 条（默认 mismatch=0，有意保留）和第 7 条（仍不把 round/fragment 写入 summary）外，都已在 v0.2 完成。
+
+1. **~38% unmatched 仍在**（全量 53.3M pairs）。这是 exact match 的结果，与实验室 Python 一致；mismatch=1 的 QC 见 `docs/MISMATCH_QC.md`。
+2. **已完成：** barcode 匹配在 quality/adapter trim 之前。
+3. **已完成：** I464 / I395 全量已跑通，并与 Python 逐 sample 对照。v0.3 又在 gzip level 1 写出路径上复核，见第 9 节。
+4. **已完成：** `--max-reads` / `--skip-reads`。
+5. **已完成：** gzip 使用 `flate2` + `zlib-rs`。v0.2.0 counts-only 的墙钟见 `docs/REAL_DATA.md` 历史表；当前生产数字是 v0.3 gzip 写出。
+6. **已完成：** stderr 进度含 pairs 与 pairs/s。
+7. **仍不做：** 样本表里的 `library_round` / `PCR_product` / primers 不进入 summary。
 
 ---
 
@@ -160,14 +162,13 @@ SLURM job 2313038（`qcpu_23i`，16 threads）。与实验室 Python exact demux
 
 默认保持 0。I464 全量 mm=1 多分配 +3.33M（+2.36 pp），无 ambiguous、无 sample 计数下降；子样本 chimeric 0 吸收。见 `docs/MISMATCH_QC.md`。
 
-### M14 — I/O 与进度 — **完成**
+### M14 — I/O 与进度 — **完成**（v0.2.0 历史测量）
 
-全量 counts-only ~390 k pairs/s，RSS ~16 MB（瓶颈为 gzip 解压）。已启用 `flate2` `zlib-rs` backend、thin LTO。写盘 2M pairs（gzip lvl1）约 5.8 s / 77 MB RSS。未上 SIMD/unsafe。
+v0.2.0 counts-only 全量约 390 k pairs/s，RSS 约 16 MB。该数字只描述当时的 counts-only 运行，不是 v0.3 生产吞吐。v0.3 在 gzip level 1 写出下的全量数字见第 9 节。已启用 `flate2` `zlib-rs` backend、thin LTO。未上 SIMD/unsafe。
 
-### M15 — v0.2 发布
+### M15 — v0.2 发布 — **完成**
 
-- CHANGELOG / README 已更新
-- tag `v0.2.0`（待用户确认后推送）
+- tag `v0.2.0` 与 `v0.2.1` 已存在
 - 可选 musl / aarch64，非必须
 
 ---
@@ -224,14 +225,17 @@ Real-data / mismatch / benchmark 等重负载遵守上文「HPC / 登录节点�
 
 ---
 
-## 9. v0.3 及以后（不在 v0.2 做）
+## 9. v0.3.0 release candidate
 
-- 更快 gzip / 自定义 FASTQ parser / Myers adapter
-- UMI 去重
-- 按 `library_round` / fragment 自动分目录
-- 与 fastp merge 的一键衔接
-- fuzz FASTQ / CSV parser
-- 单细胞 whitelist
+功能与全量验证已完成。在用户明确要求之前不打 tag、不 push。
+
+- 双线程并发解压 R1/R2（`-t > 1`）；`-t 1` 仍走同步 reader
+- stride-1 adapter：固定 8-mer 查找表 + 短 overlap 4-mer 候选；generic DP 仍是参照
+- 生产配置：`-t 12`，`--compression-level 1`（CLI 默认压缩级别仍是 6），mismatch 0，adapter 默认开启，orientation `both` 且 canonicalize
+- I464 全量 346,047 pairs/s（406.80 s）；I395 全量 341,880 pairs/s（177.03 s）
+- I464 35 个样本、I395 18 个样本与实验室 Python exact demux 一致
+
+仍不做：GUI、UMI collapse、writer 分片、额外 reader、SIMD。
 
 ### Ultraplex benchmark（已完成对照，见 `docs/ULTRAPLEX_BENCH.md`）
 
@@ -243,13 +247,10 @@ I464 200k pairs、exact / `-q 0`：SeqMux 与 Ultraplex **逐 sample 计数一�
 ## 10. 给 coding agent 的下一条任务
 
 ```text
-M10–M14 已完成。下一条：M15 发布。
+v0.3.0 生产验证已完成，等待用户审阅报告。
 
-1. 确认 git status / CHANGELOG / README；
-2. 用户明确要求后再 commit + tag v0.2.0 + push；
-3. 确认 GitHub Actions release artifacts。
-
-不要在未请求时 push 或打 tag。
+不要在用户明确要求之前 commit、tag 或 push。
+不要再做微优化，除非用户指出全量 I464/I395 运行中的新瓶颈。
 ```
 
 ---

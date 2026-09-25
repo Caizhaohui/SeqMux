@@ -1,10 +1,12 @@
 use crate::barcode::SampleKey;
 use std::path::{Path, PathBuf};
 
-/// Output file identity.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub const UNASSIGNED_SAMPLE_ID: usize = usize::MAX;
+
+/// Output file identity using integer sample_id (UNASSIGNED_SAMPLE_ID for unassigned).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct OutputKey {
-    pub sample: SampleKey,
+    pub sample_id: usize,
     pub mate: Mate,
 }
 
@@ -15,6 +17,23 @@ pub enum Mate {
     R2,
 }
 
+/// Build output path for a sample by sanitized label.
+pub fn output_path_for_label(
+    out_dir: &Path,
+    prefix: &str,
+    label: &str,
+    mate: Mate,
+    gzip: bool,
+) -> PathBuf {
+    let ext = if gzip { "fastq.gz" } else { "fastq" };
+    let name = match mate {
+        Mate::Single => format!("{prefix}_{label}.{ext}"),
+        Mate::R1 => format!("{prefix}_{label}_R1.{ext}"),
+        Mate::R2 => format!("{prefix}_{label}_R2.{ext}"),
+    };
+    out_dir.join(name)
+}
+
 /// Build output path for a sample.
 pub fn output_path(
     out_dir: &Path,
@@ -23,14 +42,7 @@ pub fn output_path(
     mate: Mate,
     gzip: bool,
 ) -> PathBuf {
-    let label = sample.label();
-    let ext = if gzip { "fastq.gz" } else { "fastq" };
-    let name = match mate {
-        Mate::Single => format!("{prefix}_{label}.{ext}"),
-        Mate::R1 => format!("{prefix}_{label}_R1.{ext}"),
-        Mate::R2 => format!("{prefix}_{label}_R2.{ext}"),
-    };
-    out_dir.join(name)
+    output_path_for_label(out_dir, prefix, &sample.label(), mate, gzip)
 }
 
 /// Summary TSV path.
@@ -79,27 +91,27 @@ impl OutputPlan {
 
         let mut fastq_files = Vec::new();
         for sample in &params.barcodes.samples {
-            let key = SampleKey::Named(sample.name.clone());
+            let label = &sample.sanitized_label;
             if params.is_paired {
-                fastq_files.push(output_path(
+                fastq_files.push(output_path_for_label(
                     params.out_dir,
                     params.prefix,
-                    &key,
+                    label,
                     Mate::R1,
                     params.gzip,
                 ));
-                fastq_files.push(output_path(
+                fastq_files.push(output_path_for_label(
                     params.out_dir,
                     params.prefix,
-                    &key,
+                    label,
                     Mate::R2,
                     params.gzip,
                 ));
             } else {
-                fastq_files.push(output_path(
+                fastq_files.push(output_path_for_label(
                     params.out_dir,
                     params.prefix,
-                    &key,
+                    label,
                     Mate::Single,
                     params.gzip,
                 ));
@@ -107,27 +119,27 @@ impl OutputPlan {
         }
 
         if !params.discard_unassigned {
-            let key = SampleKey::Unassigned;
+            let label = "unassigned";
             if params.is_paired {
-                fastq_files.push(output_path(
+                fastq_files.push(output_path_for_label(
                     params.out_dir,
                     params.prefix,
-                    &key,
+                    label,
                     Mate::R1,
                     params.gzip,
                 ));
-                fastq_files.push(output_path(
+                fastq_files.push(output_path_for_label(
                     params.out_dir,
                     params.prefix,
-                    &key,
+                    label,
                     Mate::R2,
                     params.gzip,
                 ));
             } else {
-                fastq_files.push(output_path(
+                fastq_files.push(output_path_for_label(
                     params.out_dir,
                     params.prefix,
-                    &key,
+                    label,
                     Mate::Single,
                     params.gzip,
                 ));

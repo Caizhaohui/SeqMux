@@ -22,7 +22,7 @@ FASTQ files stay on the lab filesystem. SeqMux only vendors a 5-pair fixture und
 | R1=BC1 | 45,393,500 |
 | R1=BC2 | 42,083,595 |
 
-### SeqMux v0.2.0 full counts-only (2026-08-13, SLURM `qcpu_23i`, 16 threads)
+### SeqMux v0.2.0 full counts-only（历史，2026-08-13）
 
 | Metric | SeqMux | vs Python |
 |--------|--------|-----------|
@@ -79,7 +79,31 @@ seqmux demux \
 | peak RSS | 14 MB |
 | per-sample (18) | **all match** |
 
-## Performance notes (M14)
+## SeqMux v0.3 production (2026-09-25)
+
+Same inputs and barcode tables. Command: mismatch 0 (default), adapter trimming on (default), `--compression-level 1`, **`-t 12`**, 16-CPU `qcpu_18i` allocation. Chosen because median wall time on the 2M I464 production path was 5.85 s (`-t 12`) versus 6.09 s (`-t 8`) and 5.87 s (`-t 16`).
+
+| Metric | I464 | I395 |
+|--------|------|------|
+| total pairs | 140,771,720 | 60,523,000 |
+| wall | 406.80 s (6 min 47 s) | 177.03 s (2 min 57 s) |
+| throughput | 346,047 pairs/s | 341,880 pairs/s |
+| user CPU | 2671.28 s | 1155.31 s |
+| sys CPU | 1340.83 s | 590.38 s |
+| CPU % | 986% | 986% |
+| peak RSS | 155,860 kB | 128,228 kB |
+| assigned | 87,477,095 | 39,455,648 |
+| unassigned | 53,294,625 | 21,067,352 |
+| adapter_trimmed | 1,240,406 | 795,256 |
+| output size | 10,901,284,829 B | 5,168,089,121 B |
+| per-sample vs Python | all 35 samples | all 18 samples |
+| orientation canonical / swapped | 45,393,500 / 42,083,595 | 18,606,371 / 20,849,277 |
+
+CLI `--compression-level` 的默认值仍是 6。上表使用推荐的高吞吐设置 `--compression-level 1`，没有改默认值。
+
+核对过的输出性质：`gzip -t`、R1/R2 记录数、mate ID、头尾记录相对输入的顺序、canonical 方向（Barcode1 在输出 R1），以及代表性文件的 SHA-256。分配计数与 Python 参考逐样本一致。没有把整套 gzip 输出做成与另一份产物逐字节相同的测试。
+
+## Performance notes（v0.2.0 历史，不是当前生产数字）
 
 | Workload | Wall | RSS | Notes |
 |----------|------|-----|-------|

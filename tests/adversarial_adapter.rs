@@ -3,7 +3,7 @@ use seqmux::trim::{find_3p_adapter_fast, find_3p_adapter_generic, CompiledAdapte
 const ILLUMINA_R1: &[u8] = b"AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC";
 #[allow(dead_code)]
 const ILLUMINA_R2: &[u8] = b"AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT";
-const BASES: [u8; 4] = [b'A', b'C', b'G', b'T'];
+const BASES: [u8; 4] = *b"ACGT";
 
 fn assert_differential(
     read: &[u8],

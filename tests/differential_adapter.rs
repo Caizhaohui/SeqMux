@@ -216,7 +216,7 @@ fn test_differential_synthetic_random_stress() {
             .wrapping_add(1442695040888963407);
         state
     };
-    let bases = [b'A', b'C', b'G', b'T'];
+    let bases = *b"ACGT";
 
     for i in 0..5000 {
         let read_len = 50 + (lcg() % 50) as usize;

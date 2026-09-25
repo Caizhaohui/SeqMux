@@ -244,7 +244,7 @@ impl ConcurrentPairedReader {
                     )));
                 }
                 let mut pairs = Vec::with_capacity(chunk1.records.len());
-                for (r1, r2) in chunk1.records.into_iter().zip(chunk2.records.into_iter()) {
+                for (r1, r2) in chunk1.records.into_iter().zip(chunk2.records) {
                     self.total_pairs += 1;
                     let id1 = normalize_read_id(&r1.name);
                     let id2 = normalize_read_id(&r2.name);

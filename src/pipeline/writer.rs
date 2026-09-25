@@ -41,6 +41,18 @@ impl OrderedWriter {
     }
 
     pub fn push(&mut self, chunk: ProcessedChunk) -> Result<()> {
+        if chunk.id < self.next_expected {
+            return Err(crate::error::AppError::WorkerFailure(format!(
+                "duplicate chunk id {}: already written (next expected: {})",
+                chunk.id, self.next_expected
+            )));
+        }
+        if self.pending.contains_key(&chunk.id) {
+            return Err(crate::error::AppError::WorkerFailure(format!(
+                "duplicate chunk id {}: already pending",
+                chunk.id
+            )));
+        }
         self.pending.insert(chunk.id, chunk);
         while let Some(chunk) = self.pending.remove(&self.next_expected) {
             self.write_chunk(chunk)?;
@@ -74,12 +86,14 @@ impl OrderedWriter {
     }
 
     pub fn finish(mut self) -> Result<RunStats> {
-        // Drain any remaining (should be empty if all chunks arrived)
-        let remaining: Vec<u64> = self.pending.keys().copied().collect();
-        for id in remaining {
-            if let Some(chunk) = self.pending.remove(&id) {
-                self.write_chunk(chunk)?;
-            }
+        if !self.pending.is_empty() {
+            let pending_ids: Vec<u64> = self.pending.keys().copied().collect();
+            return Err(crate::error::AppError::WorkerFailure(format!(
+                "ordered writer finished with {} pending chunks (ids: {:?}), but next expected was {}; missing chunk invariant violated",
+                self.pending.len(),
+                pending_ids,
+                self.next_expected
+            )));
         }
         for (_, w) in self.writers.drain() {
             w.finish()?;
@@ -95,5 +109,64 @@ pub fn mate_for_paired(is_r1: bool) -> Mate {
         Mate::R1
     } else {
         Mate::R2
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::stats::ChunkStats;
+    use tempfile::tempdir;
+
+    fn make_chunk(id: u64) -> ProcessedChunk {
+        ProcessedChunk {
+            id,
+            outputs: HashMap::new(),
+            stats: ChunkStats::default(),
+        }
+    }
+
+    #[test]
+    fn ordered_writer_happy_path_out_of_order() {
+        let dir = tempdir().unwrap();
+        let mut writer = OrderedWriter::new(dir.path(), "test", false, 1, true);
+        // Push 1, then 0, then 2
+        assert!(writer.push(make_chunk(1)).is_ok());
+        assert_eq!(writer.next_expected, 0);
+        assert!(writer.push(make_chunk(0)).is_ok());
+        assert_eq!(writer.next_expected, 2);
+        assert!(writer.push(make_chunk(2)).is_ok());
+        assert_eq!(writer.next_expected, 3);
+        assert!(writer.finish().is_ok());
+    }
+
+    #[test]
+    fn ordered_writer_rejects_duplicate_already_written() {
+        let dir = tempdir().unwrap();
+        let mut writer = OrderedWriter::new(dir.path(), "test", false, 1, true);
+        assert!(writer.push(make_chunk(0)).is_ok());
+        assert_eq!(writer.next_expected, 1);
+        let err = writer.push(make_chunk(0)).unwrap_err();
+        assert!(err.to_string().contains("already written"));
+    }
+
+    #[test]
+    fn ordered_writer_rejects_duplicate_pending() {
+        let dir = tempdir().unwrap();
+        let mut writer = OrderedWriter::new(dir.path(), "test", false, 1, true);
+        assert!(writer.push(make_chunk(2)).is_ok());
+        let err = writer.push(make_chunk(2)).unwrap_err();
+        assert!(err.to_string().contains("already pending"));
+    }
+
+    #[test]
+    fn ordered_writer_rejects_missing_chunk_on_finish() {
+        let dir = tempdir().unwrap();
+        let mut writer = OrderedWriter::new(dir.path(), "test", false, 1, true);
+        // Push 0 and 2; chunk 1 is missing
+        assert!(writer.push(make_chunk(0)).is_ok());
+        assert!(writer.push(make_chunk(2)).is_ok());
+        let err = writer.finish().unwrap_err();
+        assert!(err.to_string().contains("missing chunk invariant violated"));
     }
 }

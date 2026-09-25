@@ -15,6 +15,7 @@ use writer::OrderedWriter;
 
 /// Runtime options for writing outputs and threading.
 pub struct PipelineOptions<'a> {
+    pub input_files: &'a [&'a Path],
     pub out_dir: &'a Path,
     pub prefix: &'a str,
     pub gzip: bool,
@@ -36,6 +37,23 @@ pub fn run_pipeline(
     cfg: ProcessConfig,
     opts: PipelineOptions<'_>,
 ) -> Result<RunStats> {
+    crate::util::validate_prefix(opts.prefix)?;
+    let is_paired = match reader {
+        InputReader::Paired(_) => true,
+        InputReader::Single(_) => false,
+    };
+    let plan = crate::output::OutputPlan::build(&crate::output::OutputPlanParams {
+        out_dir: opts.out_dir,
+        prefix: opts.prefix,
+        barcodes: &cfg.barcodes,
+        is_paired,
+        gzip: opts.gzip,
+        discard_unassigned: cfg.discard_unassigned,
+        counts_only: cfg.counts_only,
+        summary: opts.summary,
+    });
+    crate::output::preflight_check(&plan, opts.input_files, opts.force)?;
+
     std::fs::create_dir_all(opts.out_dir)?;
 
     let threads = opts.threads.max(1);
@@ -135,9 +153,9 @@ pub fn run_pipeline(
     }
 
     if received != n_chunks {
-        log::warn!(
-            "received {received} processed chunks, expected {n_chunks} (check for worker errors)"
-        );
+        return Err(AppError::WorkerFailure(format!(
+            "received {received} processed chunks, expected {n_chunks} (worker failure or dropped chunks)"
+        )));
     }
 
     let stats = writer.finish()?;

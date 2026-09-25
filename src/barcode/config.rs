@@ -1,6 +1,6 @@
 use crate::error::{AppError, Result};
 use crate::util::sanitize_filename_component;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 /// Demultiplex operating mode derived from the sample table.
@@ -239,6 +239,7 @@ pub fn parse_barcodes_csv(
 
     let mut samples = Vec::new();
     let mut names_seen: HashSet<String> = HashSet::new();
+    let mut sanitized_seen: HashMap<String, String> = HashMap::new();
     let mut pair_seen: HashSet<(String, String)> = HashSet::new();
     let mut any_bc2 = false;
     let mut all_bc2 = true;
@@ -261,6 +262,19 @@ pub fn parse_barcodes_csv(
                 "line {line_no}: duplicate sample name '{name}'"
             )));
         }
+
+        let label = sanitize_filename_component(&name);
+        if label.eq_ignore_ascii_case("unassigned") {
+            return Err(AppError::BarcodeConfig(format!(
+                "line {line_no}: sample name '{name}' collides with reserved output name 'unassigned'"
+            )));
+        }
+        if let Some(prev) = sanitized_seen.get(&label) {
+            return Err(AppError::BarcodeConfig(format!(
+                "line {line_no}: sample name '{name}' sanitizes to '{label}', which collides with earlier sample '{prev}'"
+            )));
+        }
+        sanitized_seen.insert(label, name.clone());
 
         let bc1_raw = rec.get(col_bc1).unwrap_or("").trim();
         if bc1_raw.is_empty() {
@@ -439,5 +453,26 @@ I464469-A2,GACCTGAA,GGACTTGG,agcg,E1.fq.gz,E2.fq.gz,A,fwd,rev
         assert_eq!(cfg.samples[0].name, "I464469-A1");
         assert_eq!(cfg.samples[0].barcode1.raw, b"AAGTCCAA");
         assert_eq!(cfg.samples[0].barcode2.as_ref().unwrap().raw, b"GGAGTACT");
+    }
+
+    #[test]
+    fn reject_sanitized_sample_name_collision() {
+        // "sample:1" and "sample/1" both sanitize to "sample_1"
+        let csv = "SampleNumber,Barcode1,Barcode2\nsample:1,AAGTCCAA,GGAGTACT\nsample/1,GACCTGAA,GGACTTGG\n";
+        let err = parse_barcodes_csv(csv, 0, 0).unwrap_err();
+        assert!(
+            err.to_string().contains("collides"),
+            "expected collision error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn reject_unassigned_sample_name() {
+        let csv = "SampleNumber,Barcode1,Barcode2\nUnassigned,AAGTCCAA,GGAGTACT\n";
+        let err = parse_barcodes_csv(csv, 0, 0).unwrap_err();
+        assert!(
+            err.to_string().contains("unassigned"),
+            "expected unassigned error, got: {err}"
+        );
     }
 }

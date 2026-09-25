@@ -308,6 +308,19 @@ fn run_demux(args: DemuxArgs) -> Result<()> {
         counts_only: args.counts_only,
     };
 
+    if let Some(ref i2) = args.input2 {
+        if crate::util::paths_point_to_same_file(&args.input, i2) {
+            return Err(AppError::Cli(
+                "input and input2 cannot point to the same file".into(),
+            ));
+        }
+    }
+
+    let mut input_files = vec![args.input.as_path()];
+    if let Some(ref i2) = args.input2 {
+        input_files.push(i2.as_path());
+    }
+
     let reader = if let Some(ref i2) = args.input2 {
         InputReader::paired(&args.input, i2)?
     } else {
@@ -346,6 +359,7 @@ fn run_demux(args: DemuxArgs) -> Result<()> {
         reader,
         cfg,
         PipelineOptions {
+            input_files: &input_files,
             out_dir: &args.out_dir,
             prefix: &args.prefix,
             gzip: !args.no_gzip,

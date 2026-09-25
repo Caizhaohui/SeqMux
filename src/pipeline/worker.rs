@@ -67,7 +67,7 @@ pub fn process_chunk(chunk: InputChunk, cfg: &ProcessConfig) -> ProcessedChunk {
     }
 }
 
-fn quality_trim_record(rec: &mut OwnedFastqRecord, cfg: &ProcessConfig, stats: &mut ChunkStats) {
+fn quality_trim_record(rec: &mut OwnedFastqRecord, cfg: &ProcessConfig) -> bool {
     let orig = rec.len();
     if cfg.nextseq {
         let stop = nextseq_trim_index(
@@ -76,10 +76,9 @@ fn quality_trim_record(rec: &mut OwnedFastqRecord, cfg: &ProcessConfig, stats: &
             cfg.quality_cutoff_3,
             cfg.phred_offset,
         );
-        if stop < orig {
-            stats.quality_trimmed += 1;
-        }
+        let trimmed = stop < orig;
         rec.trim_to(0, stop);
+        trimmed
     } else {
         let (start, end) = quality_trim_bounds(
             &rec.qualities,
@@ -87,10 +86,9 @@ fn quality_trim_record(rec: &mut OwnedFastqRecord, cfg: &ProcessConfig, stats: &
             cfg.quality_cutoff_3,
             cfg.phred_offset,
         );
-        if start > 0 || end < orig {
-            stats.quality_trimmed += 1;
-        }
+        let trimmed = start > 0 || end < orig;
         rec.trim_to(start, end);
+        trimmed
     }
 }
 
@@ -98,10 +96,9 @@ fn adapter_trim_record(
     rec: &mut OwnedFastqRecord,
     adapter: Option<&[u8]>,
     cfg: &ProcessConfig,
-    stats: &mut ChunkStats,
-) {
+) -> bool {
     let Some(adapter) = adapter else {
-        return;
+        return false;
     };
     let (new_end, trimmed, _) = trim_3p_adapter(
         &rec.sequence,
@@ -110,9 +107,9 @@ fn adapter_trim_record(
         cfg.min_adapter_overlap,
     );
     if trimmed {
-        stats.adapter_trimmed += 1;
         rec.trim_to(0, new_end);
     }
+    trimmed
 }
 
 fn process_single(
@@ -132,8 +129,12 @@ fn process_single(
     if let Some(ref tso) = cfg.tso {
         apply_tso(&mut rec, tso);
     }
-    quality_trim_record(&mut rec, cfg, stats);
-    adapter_trim_record(&mut rec, cfg.adapter_r1.as_deref(), cfg, stats);
+    if quality_trim_record(&mut rec, cfg) {
+        stats.quality_trimmed += 1;
+    }
+    if adapter_trim_record(&mut rec, cfg.adapter_r1.as_deref(), cfg) {
+        stats.adapter_trimmed += 1;
+    }
     if rec.len() < cfg.min_length {
         stats.too_short += 1;
         return;
@@ -183,10 +184,16 @@ fn process_pair(
     if let Some(ref tso) = cfg.tso {
         apply_tso(&mut r1, tso);
     }
-    quality_trim_record(&mut r1, cfg, stats);
-    quality_trim_record(&mut r2, cfg, stats);
-    adapter_trim_record(&mut r1, cfg.adapter_r1.as_deref(), cfg, stats);
-    adapter_trim_record(&mut r2, cfg.adapter_r2.as_deref(), cfg, stats);
+    let q1 = quality_trim_record(&mut r1, cfg);
+    let q2 = quality_trim_record(&mut r2, cfg);
+    if q1 || q2 {
+        stats.quality_trimmed += 1;
+    }
+    let a1 = adapter_trim_record(&mut r1, cfg.adapter_r1.as_deref(), cfg);
+    let a2 = adapter_trim_record(&mut r2, cfg.adapter_r2.as_deref(), cfg);
+    if a1 || a2 {
+        stats.adapter_trimmed += 1;
+    }
     if r1.len() < cfg.min_length || r2.len() < cfg.min_length {
         stats.too_short += 1;
         return;

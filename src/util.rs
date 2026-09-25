@@ -69,6 +69,55 @@ pub fn format_count(n: u64) -> String {
     out.chars().rev().collect()
 }
 
+use crate::error::{AppError, Result};
+use std::path::{Path, PathBuf};
+
+/// Validate output filename prefix: non-empty, no path separators, not '.' or '..'.
+pub fn validate_prefix(prefix: &str) -> Result<&str> {
+    let trimmed = prefix.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::Cli("output prefix cannot be empty".into()));
+    }
+    if trimmed.contains('/') || trimmed.contains('\\') || trimmed == "." || trimmed == ".." {
+        return Err(AppError::Cli(format!(
+            "output prefix '{prefix}' must be a single file component and cannot contain path separators or '..'"
+        )));
+    }
+    Ok(trimmed)
+}
+
+/// Normalize path for collision and equivalence detection.
+pub fn normalize_path_for_compare(path: &Path) -> PathBuf {
+    if let Ok(c) = path.canonicalize() {
+        return c;
+    }
+    let abs = if path.is_absolute() {
+        path.to_path_buf()
+    } else if let Ok(cwd) = std::env::current_dir() {
+        cwd.join(path)
+    } else {
+        path.to_path_buf()
+    };
+    let mut components = Vec::new();
+    for c in abs.components() {
+        match c {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                components.pop();
+            }
+            other => {
+                components.push(other);
+            }
+        }
+    }
+    components.into_iter().collect()
+}
+
+/// Determine whether two paths point to the same filesystem location.
+pub fn paths_point_to_same_file(p1: &Path, p2: &Path) -> bool {
+    normalize_path_for_compare(p1) == normalize_path_for_compare(p2)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,5 +151,24 @@ mod tests {
         assert_eq!(sanitize_filename_component("sample-1"), "sample-1");
         assert_eq!(sanitize_filename_component("a/b:c"), "a_b_c");
         assert_eq!(sanitize_filename_component("CON"), "_CON");
+    }
+
+    #[test]
+    fn test_validate_prefix() {
+        assert!(validate_prefix("seqmux").is_ok());
+        assert!(validate_prefix("run-1_sample").is_ok());
+        assert!(validate_prefix("").is_err());
+        assert!(validate_prefix("   ").is_err());
+        assert!(validate_prefix("dir/run").is_err());
+        assert!(validate_prefix("dir\\run").is_err());
+        assert!(validate_prefix(".").is_err());
+        assert!(validate_prefix("..").is_err());
+    }
+
+    #[test]
+    fn test_paths_point_to_same_file() {
+        let p1 = Path::new("./a/b/../c");
+        let p2 = Path::new("a/c");
+        assert!(paths_point_to_same_file(p1, p2));
     }
 }

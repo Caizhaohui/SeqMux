@@ -1,0 +1,25 @@
+ M .gitignore
+ M CHANGELOG.md
+ M Cargo.lock
+ M Cargo.toml
+ M DEVELOPMENT_PLAN.md
+ M README.md
+ M src/barcode/config.rs
+ M src/barcode/matcher.rs
+ M src/cli.rs
+ M src/main.rs
+?? benchmarks/
+?? docs/FQTK_BENCHMARK.md
+?? scripts/compare_fqtk_outputs.py
+?? scripts/run_fqtk_benchmark.py
+?? scripts/run_m17_regression_sbatch.sh
+?? scripts/run_m17a_ab_benchmark.py
+?? scripts/run_m17a_benchmark_sbatch.sh
+?? scripts/run_m18_benchmark_sbatch.sh
+?? scripts/run_m18_gapfill_sbatch.sh
+?? scripts/run_m19_perf_regression_sbatch.sh
+?? scripts/run_perf_regression.py
+?? tests/mismatch_delta.rs
+?? tests/mismatch_delta_cli.rs
+?? tests/mismatch_delta_paired.rs
+?? tests/mismatch_delta_properties.rs

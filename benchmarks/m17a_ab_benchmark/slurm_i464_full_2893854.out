@@ -1,0 +1,35 @@
+==================================================
+Starting Full I464 (140,771,720 pairs) mimalloc validation
+Date: 2026-10-07T14:11:02+08:00
+Host: bnode1.tibhpc.net
+SLURM Job ID: 2893854
+CPUs allocated: 16
+==================================================
+[1/4] Building release binary with --features mimalloc-allocator...
+20cb01fb1921fa3c5d6a738a1ab86bdf8cd913679a592040a5f1951ff4571092  /hpcfs/fhome/caizhh/Desktop/03_Tool_Development/03_SeqMux/target/release/seqmux
+[2/4] Preparing output directory: /hpcfs/fhome/caizhh/Desktop/03_Tool_Development/03_SeqMux/tmp/m17a_runs/i464_full_mimalloc
+[3/4] Running seqmux demux on 140,771,720 pairs (-t 12 --compression-level 1)...
+[4/4] Parsing results and verifying correctness...
+	Command being timed: "/hpcfs/fhome/caizhh/Desktop/03_Tool_Development/03_SeqMux/target/release/seqmux demux -i /hpcfs/fhome/caizhh/03_PCR_analysis/25_464469erdaimix/E260702007_L01_464469erdaimix_1.fq.gz -I /hpcfs/fhome/caizhh/03_PCR_analysis/25_464469erdaimix/E260702007_L01_464469erdaimix_2.fq.gz -b /hpcfs/fhome/caizhh/Desktop/03_Tool_Development/03_SeqMux/tests/fixtures/I464-469erdai_barcode_and_name.csv -o /hpcfs/fhome/caizhh/Desktop/03_Tool_Development/03_SeqMux/tmp/m17a_runs/i464_full_mimalloc -p i464_full -t 12 --compression-level 1 --force"
+	User time (seconds): 1348.67
+	System time (seconds): 25.28
+	Percent of CPU this job got: 703%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 3:15.23
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 477244
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 2332440
+	Voluntary context switches: 102820
+	Involuntary context switches: 4035
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 0
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

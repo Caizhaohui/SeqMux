@@ -1,0 +1,34 @@
+{
+  "A": {
+    "name": "A_baseline",
+    "description": "Current baseline (thin LTO, codegen-units=16, default allocator)",
+    "build_time_seconds": 10.518200002610683,
+    "binary_size_bytes": 3797320,
+    "sha256": "a44491991dec56dd13ba797ff23ebff00f5f18b3b6666918fdb3c819860b85fd",
+    "binary_path": "/hpcfs/fhome/caizhh/Desktop/03_Tool_Development/03_SeqMux/benchmarks/m17a_ab_benchmark/binaries/seqmux_A_baseline"
+  },
+  "B": {
+    "name": "B_fat_lto",
+    "description": "Fat LTO only (fat LTO, codegen-units=1, default allocator)",
+    "build_time_seconds": 35.974333111196756,
+    "binary_size_bytes": 3141336,
+    "sha256": "db401454f5fba9065088c14e0ac2d26fbb3bcd6be832c8df9b2f35cbb514bbe6",
+    "binary_path": "/hpcfs/fhome/caizhh/Desktop/03_Tool_Development/03_SeqMux/benchmarks/m17a_ab_benchmark/binaries/seqmux_B_fat_lto"
+  },
+  "C": {
+    "name": "C_mimalloc",
+    "description": "mimalloc only (thin LTO, codegen-units=16, mimalloc)",
+    "build_time_seconds": 7.512806139886379,
+    "binary_size_bytes": 3945528,
+    "sha256": "20cb01fb1921fa3c5d6a738a1ab86bdf8cd913679a592040a5f1951ff4571092",
+    "binary_path": "/hpcfs/fhome/caizhh/Desktop/03_Tool_Development/03_SeqMux/benchmarks/m17a_ab_benchmark/binaries/seqmux_C_mimalloc"
+  },
+  "D": {
+    "name": "D_both",
+    "description": "Fat LTO + mimalloc (fat LTO, codegen-units=1, mimalloc)",
+    "build_time_seconds": 29.03993856534362,
+    "binary_size_bytes": 3307008,
+    "sha256": "0f2ef94907e70d61599efe4d958b057c6e621db989d4240c33187926efb23d02",
+    "binary_path": "/hpcfs/fhome/caizhh/Desktop/03_Tool_Development/03_SeqMux/benchmarks/m17a_ab_benchmark/binaries/seqmux_D_both"
+  }
+}

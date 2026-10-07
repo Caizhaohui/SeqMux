@@ -19,6 +19,9 @@ path = "src/main.rs"
 name = "seqmux"
 path = "src/lib.rs"
 
+[features]
+mimalloc-allocator = ["dep:mimalloc"]
+
 [dependencies]
 anyhow = "1"
 thiserror = "1"
@@ -29,6 +32,7 @@ flate2 = { version = "1", features = ["zlib-rs"] }
 needletail = "0.6"
 log = "0.4"
 env_logger = "0.11"
+mimalloc = { version = "0.1", optional = true, default-features = false }
 
 [dev-dependencies]
 tempfile = "3"
@@ -40,3 +44,4 @@ proptest = "1"
 lto = "thin"
 codegen-units = 16
 panic = "abort"
+

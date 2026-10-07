@@ -1,0 +1,2 @@
+Cpus_allowed:	07fff1
+Cpus_allowed_list:	0,4-18

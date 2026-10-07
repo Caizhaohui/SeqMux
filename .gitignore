@@ -13,3 +13,20 @@ Cargo.lock.bak
 *.summary.tsv
 __pycache__/
 *.pyc
+
+# Generated demux output from real datasets. Keep only the small machine-readable
+# records under benchmarks/ (benchmark_results.tsv, provenance/, commands.log,
+# i464_metadata.tsv). Real FASTQ must never enter git.
+#
+# The trailing slash matters on the gate rule: the correctness-gate *directories*
+# are throwaway FULL output, but the gate *result files* under provenance/ are
+# cited evidence and must stay tracked.
+benchmarks/**/runs*/
+benchmarks/**/gate_*/
+benchmarks/**/binaries/
+*.fq.gz
+*.fastq.gz
+
+# Archived production-regression evidence for M17 is deliberately tracked even
+# though it contains per-run summaries.
+!benchmarks/m17_regression/**

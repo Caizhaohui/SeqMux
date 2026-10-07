@@ -1,0 +1,160 @@
+    Finished `release` profile [optimized] target(s) in 1.13s
+SeqMux demux
+  input : /hpcfs/fhome/caizhh/03_PCR_analysis/25_464469erdaimix/E260702007_L01_464469erdaimix_1.fq.gz
+  input2: /hpcfs/fhome/caizhh/03_PCR_analysis/25_464469erdaimix/E260702007_L01_464469erdaimix_2.fq.gz
+  barcodes: /hpcfs/fhome/caizhh/Desktop/03_Tool_Development/03_SeqMux/tests/fixtures/I464-469erdai_barcode_and_name.csv
+  samples : 35
+  mode    : DualBarcode
+  orient  : Both
+  adapter : R1=AGATCGGAAGAGCACACGTCTGAA R2=AGATCGGAAGAGCGTCGTG
+  out-dir : /hpcfs/fhome/caizhh/Desktop/03_Tool_Development/03_SeqMux/tmp/m17a_runs/i464_full_mimalloc
+  threads : 12
+processed 1,114,112 pairs | 552.4 k pairs/s | assigned 691,445 (62.1%) | 2s
+processed 2,465,792 pairs | 613.1 k pairs/s | assigned 1,546,945 (62.7%) | 4s
+processed 3,817,472 pairs | 633.9 k pairs/s | assigned 2,400,594 (62.9%) | 6s
+processed 5,214,208 pairs | 649.1 k pairs/s | assigned 3,282,572 (63.0%) | 8s
+processed 6,565,888 pairs | 654.1 k pairs/s | assigned 4,136,660 (63.0%) | 10s
+processed 7,892,992 pairs | 655.3 k pairs/s | assigned 4,972,891 (63.0%) | 12s
+processed 9,273,344 pairs | 660.1 k pairs/s | assigned 5,844,230 (63.0%) | 14s
+processed 10,653,696 pairs | 663.7 k pairs/s | assigned 6,712,648 (63.0%) | 16s
+processed 12,054,528 pairs | 667.3 k pairs/s | assigned 7,593,924 (63.0%) | 18s
+processed 13,512,704 pairs | 671.4 k pairs/s | assigned 8,510,636 (63.0%) | 20s
+processed 14,917,632 pairs | 674.0 k pairs/s | assigned 9,395,361 (63.0%) | 22s
+processed 16,314,368 pairs | 675.8 k pairs/s | assigned 10,274,077 (63.0%) | 24s
+processed 17,747,968 pairs | 678.7 k pairs/s | assigned 11,174,512 (63.0%) | 26s
+processed 19,185,664 pairs | 681.5 k pairs/s | assigned 12,078,288 (63.0%) | 28s
+processed 20,611,072 pairs | 683.5 k pairs/s | assigned 12,974,169 (62.9%) | 30s
+processed 22,036,480 pairs | 685.0 k pairs/s | assigned 13,869,973 (62.9%) | 32s
+processed 23,457,792 pairs | 686.5 k pairs/s | assigned 14,763,108 (62.9%) | 34s
+processed 24,907,776 pairs | 688.0 k pairs/s | assigned 15,673,893 (62.9%) | 36s
+processed 26,353,664 pairs | 689.5 k pairs/s | assigned 16,583,169 (62.9%) | 38s
+processed 27,787,264 pairs | 690.8 k pairs/s | assigned 17,486,585 (62.9%) | 40s
+processed 29,208,576 pairs | 691.6 k pairs/s | assigned 18,382,053 (62.9%) | 42s
+processed 30,617,600 pairs | 692.1 k pairs/s | assigned 19,269,161 (62.9%) | 44s
+processed 32,018,432 pairs | 692.5 k pairs/s | assigned 20,151,716 (62.9%) | 46s
+processed 33,398,784 pairs | 692.4 k pairs/s | assigned 21,020,598 (62.9%) | 48s
+processed 34,766,848 pairs | 691.9 k pairs/s | assigned 21,881,600 (62.9%) | 50s
+processed 36,134,912 pairs | 691.6 k pairs/s | assigned 22,743,169 (62.9%) | 52s
+processed 37,437,440 pairs | 689.9 k pairs/s | assigned 23,565,401 (62.9%) | 54s
+processed 38,658,048 pairs | 686.8 k pairs/s | assigned 24,324,580 (62.9%) | 56s
+processed 40,108,032 pairs | 687.9 k pairs/s | assigned 25,228,077 (62.9%) | 58s
+processed 41,619,456 pairs | 690.1 k pairs/s | assigned 26,168,988 (62.9%) | 60s
+processed 43,110,400 pairs | 691.9 k pairs/s | assigned 27,094,900 (62.9%) | 62s
+processed 44,613,632 pairs | 693.7 k pairs/s | assigned 28,028,183 (62.8%) | 64s
+processed 46,120,960 pairs | 695.4 k pairs/s | assigned 28,965,089 (62.8%) | 66s
+processed 47,583,232 pairs | 696.4 k pairs/s | assigned 29,870,860 (62.8%) | 68s
+processed 49,098,752 pairs | 698.0 k pairs/s | assigned 30,812,000 (62.8%) | 70s
+processed 50,552,832 pairs | 698.8 k pairs/s | assigned 31,712,858 (62.7%) | 72s
+processed 52,035,584 pairs | 700.0 k pairs/s | assigned 32,634,117 (62.7%) | 74s
+processed 53,551,104 pairs | 701.5 k pairs/s | assigned 33,574,829 (62.7%) | 76s
+processed 55,033,856 pairs | 702.4 k pairs/s | assigned 34,493,882 (62.7%) | 78s
+processed 56,541,184 pairs | 703.6 k pairs/s | assigned 35,430,830 (62.7%) | 80s
+processed 58,064,896 pairs | 705.0 k pairs/s | assigned 36,376,867 (62.6%) | 82s
+processed 59,564,032 pairs | 706.0 k pairs/s | assigned 37,308,343 (62.6%) | 84s
+processed 61,083,648 pairs | 707.2 k pairs/s | assigned 38,251,900 (62.6%) | 86s
+processed 62,570,496 pairs | 708.0 k pairs/s | assigned 39,174,762 (62.6%) | 88s
+processed 64,045,056 pairs | 708.6 k pairs/s | assigned 40,089,591 (62.6%) | 90s
+processed 65,429,504 pairs | 708.2 k pairs/s | assigned 40,948,950 (62.6%) | 92s
+processed 66,809,856 pairs | 707.8 k pairs/s | assigned 41,805,057 (62.6%) | 94s
+processed 68,239,360 pairs | 708.0 k pairs/s | assigned 42,691,322 (62.6%) | 96s
+processed 69,640,192 pairs | 707.8 k pairs/s | assigned 43,558,687 (62.5%) | 98s
+processed 71,045,120 pairs | 707.7 k pairs/s | assigned 44,428,737 (62.5%) | 100s
+processed 72,470,528 pairs | 707.7 k pairs/s | assigned 45,311,581 (62.5%) | 102s
+processed 73,883,648 pairs | 707.7 k pairs/s | assigned 46,187,760 (62.5%) | 104s
+processed 75,309,056 pairs | 707.7 k pairs/s | assigned 47,071,963 (62.5%) | 106s
+processed 76,722,176 pairs | 707.7 k pairs/s | assigned 47,947,622 (62.5%) | 108s
+processed 78,139,392 pairs | 707.5 k pairs/s | assigned 48,823,871 (62.5%) | 110s
+processed 79,560,704 pairs | 707.6 k pairs/s | assigned 49,704,069 (62.5%) | 112s
+processed 80,982,016 pairs | 707.4 k pairs/s | assigned 50,582,273 (62.5%) | 114s
+processed 82,411,520 pairs | 707.5 k pairs/s | assigned 51,467,864 (62.5%) | 116s
+processed 83,779,584 pairs | 707.1 k pairs/s | assigned 52,311,966 (62.4%) | 118s
+processed 85,196,800 pairs | 707.1 k pairs/s | assigned 53,189,519 (62.4%) | 120s
+processed 86,585,344 pairs | 706.9 k pairs/s | assigned 54,046,812 (62.4%) | 122s
+processed 87,961,600 pairs | 706.5 k pairs/s | assigned 54,896,225 (62.4%) | 124s
+processed 89,362,432 pairs | 706.4 k pairs/s | assigned 55,762,546 (62.4%) | 127s
+processed 90,783,744 pairs | 706.5 k pairs/s | assigned 56,641,478 (62.4%) | 129s
+processed 92,340,224 pairs | 707.4 k pairs/s | assigned 57,606,233 (62.4%) | 131s
+processed 93,790,208 pairs | 707.6 k pairs/s | assigned 58,499,640 (62.4%) | 133s
+processed 95,191,040 pairs | 707.4 k pairs/s | assigned 59,367,030 (62.4%) | 135s
+processed 96,669,696 pairs | 707.9 k pairs/s | assigned 60,279,705 (62.4%) | 137s
+processed 98,148,352 pairs | 708.3 k pairs/s | assigned 61,192,371 (62.3%) | 139s
+processed 99,667,968 pairs | 709.0 k pairs/s | assigned 62,129,910 (62.3%) | 141s
+processed 101,130,240 pairs | 709.3 k pairs/s | assigned 63,031,505 (62.3%) | 143s
+processed 102,662,144 pairs | 710.0 k pairs/s | assigned 63,975,475 (62.3%) | 145s
+processed 104,185,856 pairs | 710.6 k pairs/s | assigned 64,916,915 (62.3%) | 147s
+processed 105,668,608 pairs | 711.1 k pairs/s | assigned 65,830,328 (62.3%) | 149s
+processed 107,175,936 pairs | 711.6 k pairs/s | assigned 66,760,636 (62.3%) | 151s
+processed 108,707,840 pairs | 712.1 k pairs/s | assigned 67,708,083 (62.3%) | 153s
+processed 110,211,072 pairs | 712.6 k pairs/s | assigned 68,635,164 (62.3%) | 155s
+processed 111,767,552 pairs | 713.5 k pairs/s | assigned 69,598,123 (62.3%) | 157s
+processed 113,262,592 pairs | 713.8 k pairs/s | assigned 70,520,858 (62.3%) | 159s
+processed 114,790,400 pairs | 714.4 k pairs/s | assigned 71,464,364 (62.3%) | 161s
+processed 116,322,304 pairs | 715.0 k pairs/s | assigned 72,408,576 (62.2%) | 163s
+processed 117,825,536 pairs | 715.4 k pairs/s | assigned 73,335,583 (62.2%) | 165s
+processed 119,377,920 pairs | 716.1 k pairs/s | assigned 74,294,351 (62.2%) | 167s
+processed 120,901,632 pairs | 716.7 k pairs/s | assigned 75,233,322 (62.2%) | 169s
+processed 122,429,440 pairs | 717.1 k pairs/s | assigned 76,175,023 (62.2%) | 171s
+processed 123,973,632 pairs | 717.8 k pairs/s | assigned 77,128,897 (62.2%) | 173s
+processed 125,501,440 pairs | 718.3 k pairs/s | assigned 78,068,980 (62.2%) | 175s
+processed 126,951,424 pairs | 718.3 k pairs/s | assigned 78,962,303 (62.2%) | 177s
+processed 128,425,984 pairs | 718.5 k pairs/s | assigned 79,870,477 (62.2%) | 179s
+processed 129,937,408 pairs | 718.9 k pairs/s | assigned 80,802,089 (62.2%) | 181s
+processed 131,444,736 pairs | 719.3 k pairs/s | assigned 81,730,779 (62.2%) | 183s
+processed 132,956,160 pairs | 719.7 k pairs/s | assigned 82,661,040 (62.2%) | 185s
+processed 134,475,776 pairs | 720.1 k pairs/s | assigned 83,596,238 (62.2%) | 187s
+processed 135,999,488 pairs | 720.5 k pairs/s | assigned 84,534,400 (62.2%) | 189s
+processed 137,531,392 pairs | 721.0 k pairs/s | assigned 85,480,203 (62.2%) | 191s
+processed 139,063,296 pairs | 721.4 k pairs/s | assigned 86,425,941 (62.1%) | 193s
+processed 140,554,240 pairs | 721.6 k pairs/s | assigned 87,343,291 (62.1%) | 195s
+
+SeqMux summary
+────────────────────────────────────────
+Total reads:         140,771,720 
+Assigned:             87,477,095  (62.14%)
+Unassigned:           53,294,625  (37.86%)
+Ambiguous:                     0  ( 0.00%)
+Quality trimmed:               0  ( 0.00%)
+Adapter trimmed:       1,240,406  ( 0.88%)
+Length filtered:               0  ( 0.00%)
+Orientation R1=BC1:   45,393,500  (32.25%)
+Orientation R1=BC2:   42,083,595  (29.89%)
+
+Per-sample counts:
+  I464469-A1                                  3,187,694
+  I464469-A2                                  2,994,779
+  I464469-A3                                  2,656,236
+  I464469-A4                                  3,759,458
+  I464469-A5                                  3,276,380
+  I464469-A6                                  3,372,809
+  I464469-A7                                  1,933,595
+  I464469-B1                                  3,051,622
+  I464469-B2                                  2,570,098
+  I464469-B3                                  2,405,944
+  I464469-B4                                  2,849,626
+  I464469-B5                                  1,961,498
+  I464469-B6                                  2,674,034
+  I464469-B7                                  2,389,865
+  I464469-C1                                  2,337,490
+  I464469-C2                                  2,026,629
+  I464469-C3                                  1,588,932
+  I464469-C4                                  3,589,589
+  I464469-C5                                  2,740,931
+  I464469-C6                                  2,515,113
+  I464469-C7                                  1,690,263
+  I464469-D1                                  2,119,027
+  I464469-D2                                  3,029,192
+  I464469-D3                                  2,440,775
+  I464469-D4                                  2,142,831
+  I464469-D5                                  2,388,305
+  I464469-D6                                    959,874
+  I464469-D7                                  2,280,036
+  I464469-E1                                  2,147,128
+  I464469-E2                                  2,820,489
+  I464469-E3                                  1,899,105
+  I464469-E4                                  1,769,898
+  I464469-E5                                  3,173,237
+  I464469-E6                                  2,036,428
+  I464469-E7                                  2,698,185
+
+Summary written to /hpcfs/fhome/caizhh/Desktop/03_Tool_Development/03_SeqMux/tmp/m17a_runs/i464_full_mimalloc/i464_full.summary.tsv
+cat: /hpcfs/fhome/caizhh/Desktop/03_Tool_Development/03_SeqMux/tmp/m17a_runs/i464_full_mimalloc/seqmux.summary.tsv: No such file or directory

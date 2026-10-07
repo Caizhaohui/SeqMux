@@ -1,0 +1,159 @@
+==================================================
+SeqMux M17A: Strict A/B Release Profile & Allocator Benchmark
+Job ID: 2893788
+Node:   bnode1
+CPUs:   16
+Date:   2026-10-07T13:48:32+08:00
+==================================================
+[2026-10-07 13:48:32] Freezing reference provenance...
+[2026-10-07 13:48:32] Building 4 runtime variants...
+[2026-10-07 13:48:32] --- Building Variant A (A_baseline): Current baseline (thin LTO, codegen-units=16, default allocator) ---
+[2026-10-07 13:48:58] Variant A built in 10.52s, size: 3.62 MB, sha256: a44491991dec56dd...
+[2026-10-07 13:48:58] --- Building Variant B (B_fat_lto): Fat LTO only (fat LTO, codegen-units=1, default allocator) ---
+[2026-10-07 13:49:34] Variant B built in 35.97s, size: 3.00 MB, sha256: db401454f5fba906...
+[2026-10-07 13:49:34] --- Building Variant C (C_mimalloc): mimalloc only (thin LTO, codegen-units=16, mimalloc) ---
+[2026-10-07 13:49:42] Variant C built in 7.51s, size: 3.76 MB, sha256: 20cb01fb1921fa3c...
+[2026-10-07 13:49:42] --- Building Variant D (D_both): Fat LTO + mimalloc (fat LTO, codegen-units=1, mimalloc) ---
+[2026-10-07 13:50:11] Variant D built in 29.04s, size: 3.15 MB, sha256: 0f2ef94907e70d61...
+[2026-10-07 13:50:11] ==================================================
+[2026-10-07 13:50:11] Starting PRIMARY_PRODUCTION benchmark
+[2026-10-07 13:50:11] ==================================================
+[2026-10-07 13:50:11] --- Running 1 Warm-up per variant ---
+[2026-10-07 13:50:17] Warm-up A completed.
+[2026-10-07 13:50:23] Warm-up B completed.
+[2026-10-07 13:50:27] Warm-up C completed.
+[2026-10-07 13:50:31] Warm-up D completed.
+[2026-10-07 13:50:31] 
+--- Round 1/5: Order A -> B -> C -> D ---
+[2026-10-07 13:50:37]   Variant A: wall=6.01s | 332.8k pairs/s | rss=125.7 MB (PASS)
+[2026-10-07 13:50:43]   Variant B: wall=6.09s | 328.4k pairs/s | rss=136.1 MB (PASS)
+[2026-10-07 13:50:47]   Variant C: wall=4.54s | 440.5k pairs/s | rss=467.1 MB (PASS)
+[2026-10-07 13:50:51]   Variant D: wall=3.40s | 588.2k pairs/s | rss=432.9 MB (PASS)
+[2026-10-07 13:50:51] 
+--- Round 2/5: Order D -> C -> B -> A ---
+[2026-10-07 13:50:54]   Variant D: wall=3.57s | 560.2k pairs/s | rss=460.9 MB (PASS)
+[2026-10-07 13:50:58]   Variant C: wall=3.48s | 574.7k pairs/s | rss=467.1 MB (PASS)
+[2026-10-07 13:51:04]   Variant B: wall=6.35s | 315.0k pairs/s | rss=133.5 MB (PASS)
+[2026-10-07 13:51:10]   Variant A: wall=5.98s | 334.4k pairs/s | rss=150.2 MB (PASS)
+[2026-10-07 13:51:10] 
+--- Round 3/5: Order B -> D -> A -> C ---
+[2026-10-07 13:51:16]   Variant B: wall=5.86s | 341.3k pairs/s | rss=159.2 MB (PASS)
+[2026-10-07 13:51:20]   Variant D: wall=3.60s | 555.6k pairs/s | rss=457.6 MB (PASS)
+[2026-10-07 13:51:26]   Variant A: wall=6.01s | 332.8k pairs/s | rss=153.7 MB (PASS)
+[2026-10-07 13:51:30]   Variant C: wall=3.51s | 569.8k pairs/s | rss=465.4 MB (PASS)
+[2026-10-07 13:51:30] 
+--- Round 4/5: Order C -> A -> D -> B ---
+[2026-10-07 13:51:34]   Variant C: wall=3.54s | 565.0k pairs/s | rss=453.1 MB (PASS)
+[2026-10-07 13:51:40]   Variant A: wall=6.09s | 328.4k pairs/s | rss=122.4 MB (PASS)
+[2026-10-07 13:51:43]   Variant D: wall=3.63s | 551.0k pairs/s | rss=440.9 MB (PASS)
+[2026-10-07 13:51:50]   Variant B: wall=6.14s | 325.7k pairs/s | rss=146.1 MB (PASS)
+[2026-10-07 13:51:50] 
+--- Round 5/5: Order A -> C -> B -> D ---
+[2026-10-07 13:51:56]   Variant A: wall=5.86s | 341.3k pairs/s | rss=122.7 MB (PASS)
+[2026-10-07 13:51:59]   Variant C: wall=3.63s | 551.0k pairs/s | rss=467.1 MB (PASS)
+[2026-10-07 13:52:05]   Variant B: wall=6.15s | 325.2k pairs/s | rss=244.2 MB (PASS)
+[2026-10-07 13:52:09]   Variant D: wall=3.79s | 527.7k pairs/s | rss=474.9 MB (PASS)
+[2026-10-07 13:52:09] ==================================================
+[2026-10-07 13:52:09] Starting DIAGNOSTIC_COUNTS_ONLY benchmark
+[2026-10-07 13:52:09] ==================================================
+[2026-10-07 13:52:09] --- Running 1 Warm-up per variant ---
+[2026-10-07 13:52:15] Warm-up A completed.
+[2026-10-07 13:52:20] Warm-up B completed.
+[2026-10-07 13:52:22] Warm-up C completed.
+[2026-10-07 13:52:25] Warm-up D completed.
+[2026-10-07 13:52:25] 
+--- Round 1/5: Order A -> B -> C -> D ---
+[2026-10-07 13:52:30]   Variant A: wall=5.69s | 351.5k pairs/s | rss=39.1 MB (PASS)
+[2026-10-07 13:52:36]   Variant B: wall=5.69s | 351.5k pairs/s | rss=49.7 MB (PASS)
+[2026-10-07 13:52:38]   Variant C: wall=1.95s | 1025.6k pairs/s | rss=62.9 MB (PASS)
+[2026-10-07 13:52:40]   Variant D: wall=2.02s | 990.1k pairs/s | rss=62.6 MB (PASS)
+[2026-10-07 13:52:40] 
+--- Round 2/5: Order D -> C -> B -> A ---
+[2026-10-07 13:52:42]   Variant D: wall=2.01s | 995.0k pairs/s | rss=64.7 MB (PASS)
+[2026-10-07 13:52:44]   Variant C: wall=1.96s | 1020.4k pairs/s | rss=64.9 MB (PASS)
+[2026-10-07 13:52:49]   Variant B: wall=5.51s | 363.0k pairs/s | rss=42.0 MB (PASS)
+[2026-10-07 13:52:55]   Variant A: wall=5.79s | 345.4k pairs/s | rss=48.8 MB (PASS)
+[2026-10-07 13:52:55] 
+--- Round 3/5: Order B -> D -> A -> C ---
+[2026-10-07 13:53:01]   Variant B: wall=5.57s | 359.1k pairs/s | rss=42.3 MB (PASS)
+[2026-10-07 13:53:03]   Variant D: wall=1.97s | 1015.2k pairs/s | rss=54.6 MB (PASS)
+[2026-10-07 13:53:08]   Variant A: wall=5.61s | 356.5k pairs/s | rss=49.8 MB (PASS)
+[2026-10-07 13:53:10]   Variant C: wall=2.01s | 995.0k pairs/s | rss=64.9 MB (PASS)
+[2026-10-07 13:53:10] 
+--- Round 4/5: Order C -> A -> D -> B ---
+[2026-10-07 13:53:12]   Variant C: wall=1.96s | 1020.4k pairs/s | rss=62.8 MB (PASS)
+[2026-10-07 13:53:18]   Variant A: wall=5.58s | 358.4k pairs/s | rss=30.5 MB (PASS)
+[2026-10-07 13:53:20]   Variant D: wall=2.05s | 975.6k pairs/s | rss=62.6 MB (PASS)
+[2026-10-07 13:53:26]   Variant B: wall=5.74s | 348.4k pairs/s | rss=48.8 MB (PASS)
+[2026-10-07 13:53:26] 
+--- Round 5/5: Order A -> C -> B -> D ---
+[2026-10-07 13:53:31]   Variant A: wall=5.53s | 361.7k pairs/s | rss=41.1 MB (PASS)
+[2026-10-07 13:53:33]   Variant C: wall=1.91s | 1047.1k pairs/s | rss=62.9 MB (PASS)
+[2026-10-07 13:53:39]   Variant B: wall=5.65s | 354.0k pairs/s | rss=47.8 MB (PASS)
+[2026-10-07 13:53:41]   Variant D: wall=2.09s | 956.9k pairs/s | rss=58.6 MB (PASS)
+[2026-10-07 13:53:41] 
+==================================================
+[2026-10-07 13:53:41] Correctness Gate: Decompressed FASTQ Parity Check
+[2026-10-07 13:53:41] ==================================================
+[2026-10-07 13:53:41] Comparing Variant B against Baseline A...
+[2026-10-07 13:53:56] Variant B: All 72 sample FASTQ streams matched Baseline A byte-for-byte!
+[2026-10-07 13:53:56] Comparing Variant C against Baseline A...
+[2026-10-07 13:54:10] Variant C: All 72 sample FASTQ streams matched Baseline A byte-for-byte!
+[2026-10-07 13:54:10] Comparing Variant D against Baseline A...
+[2026-10-07 13:54:24] Variant D: All 72 sample FASTQ streams matched Baseline A byte-for-byte!
+[2026-10-07 13:54:24] Decompressed FASTQ parity verification: ALL CHECKS PASSED.
+[2026-10-07 13:54:24] 
+Generating M17A Benchmark Report...
+
+================================================================================
+# SeqMux M17A Benchmark Report — Release Build / Allocator Strict A/B
+
+## 1. Environment & Hardware
+
+- **Date**: 2026-10-07 13:54:24
+- **Host**: `bnode1.tibhpc.net`
+- **SLURM Job**: `2893788`
+- **CPUs allocated**: `16`
+- **Dataset**: I464 2,000,000 paired-read benchmark dataset (`tmp/upx_bench/i464_2000000_*.fq.gz`)
+- **Command**: `-t 12 --compression-level 1` (production) / `-t 12 --counts-only` (diagnostic)
+- **Methodology**: 1 warm-up + 5 interleaved measured repetitions across 4 variants
+
+## 2. Production Workload Results (Median of 5 Replicates)
+
+| Variant | Description | Wall (s) | Min–Max (s) | pairs/s | Speedup | User CPU | Sys CPU | Peak RSS (MB) |
+|:---|:---|---:|---:|---:|---:|---:|---:|---:|
+| **A** | A_baseline | 6.01 | 5.86–6.09 | 332,779 | **1.00x** | 35.60s | 16.43s | 125.7 |
+| **B** | B_fat_lto | 6.14 | 5.86–6.35 | 325,733 | **0.98x** | 36.89s | 18.23s | 146.1 |
+| **C** | C_mimalloc | 3.54 | 3.48–4.54 | 564,972 | **1.70x** | 18.51s | 0.55s | 467.1 |
+| **D** | D_both | 3.60 | 3.40–3.79 | 555,556 | **1.67x** | 18.43s | 0.55s | 457.6 |
+
+## 3. Diagnostic Counts-Only Workload & Build Trade-Offs
+
+| Variant | Diagnostic Wall (s) | Diag Speedup | Clean Build Time (s) | Binary Size (MB) |
+|:---|---:|---:|---:|---:|
+| **A** | 5.61 | 1.00x | 10.5s | 3.62 MB |
+| **B** | 5.65 | 0.99x | 36.0s | 3.00 MB |
+| **C** | 1.96 | 2.86x | 7.5s | 3.76 MB |
+| **D** | 2.02 | 2.78x | 29.0s | 3.15 MB |
+
+## 4. Correctness Gate Verification
+
+- **Sample Counts**: All 4 variants reproduced exactly 1,251,876 assigned, 748,124 unassigned, 629,825 canonical, 622,051 swapped, and 16,542 adapter-trimmed pairs across all 35 samples.
+- **Decompressed FASTQ Content**: Verified byte-identical SHA-256 for all 70 sample FASTQ streams between Variant A and Variants B, C, D.
+- **Status**: **ALL CORRECTNESS CHECKS PASSED**.
+
+## 5. M17A Final Verdict
+
+```text
+fat LTO:              REJECT (speedup: 0.98x, build time: 36.0s vs 10.5s)
+mimalloc:             REJECT (speedup: 1.70x, RSS: 467.1 MB vs 125.7 MB)
+RECOMMENDED BUILD:    A (Baseline thin LTO)
+```
+
+================================================================================
+[2026-10-07 13:54:24] Report saved to /hpcfs/fhome/caizhh/Desktop/03_Tool_Development/03_SeqMux/benchmarks/m17a_ab_benchmark/M17A_REPORT.md
+
+==================================================
+M17A Benchmark Completed
+Date: 2026-10-07T13:54:24+08:00
+==================================================

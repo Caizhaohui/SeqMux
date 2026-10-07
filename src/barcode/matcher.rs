@@ -210,6 +210,7 @@ fn pick_best_oriented(candidates: &[(usize, usize, bool)]) -> MatchResult {
 
 /// Match single-end or R1-only using Barcode1 at 5'.
 pub fn match_single(seq: &[u8], cfg: &BarcodeConfig) -> MatchResult {
+    // Pass 1: Find best eligible sample
     let mut best_dist = usize::MAX;
     let mut best_sample = usize::MAX;
     let mut is_ambiguous = false;
@@ -227,23 +228,48 @@ pub fn match_single(seq: &[u8], cfg: &BarcodeConfig) -> MatchResult {
             }
         }
     }
+
     if best_dist == usize::MAX {
-        MatchResult::NoMatch
-    } else if is_ambiguous {
-        MatchResult::Ambiguous {
+        return MatchResult::NoMatch;
+    }
+    if is_ambiguous {
+        return MatchResult::Ambiguous {
             distance: best_dist,
+        };
+    }
+
+    // Pass 2: If min_mismatch_delta > 0, find closest distinct competitor globally across all samples
+    if cfg.min_mismatch_delta > 0 {
+        let mut runner_up_dist = usize::MAX;
+        for (i, sample) in cfg.samples.iter().enumerate() {
+            if i == best_sample {
+                continue;
+            }
+            if let Some(d) = barcode_distance_5p(seq, &sample.barcode1) {
+                if d < runner_up_dist {
+                    runner_up_dist = d;
+                }
+            }
         }
-    } else {
-        MatchResult::Match {
-            sample_index: best_sample,
-            distance: best_dist,
-            swapped: false,
+        if runner_up_dist != usize::MAX
+            && (runner_up_dist <= best_dist || runner_up_dist - best_dist < cfg.min_mismatch_delta)
+        {
+            return MatchResult::Ambiguous {
+                distance: best_dist,
+            };
         }
+    }
+
+    MatchResult::Match {
+        sample_index: best_sample,
+        distance: best_dist,
+        swapped: false,
     }
 }
 
 /// Match dual-barcode single-end: Barcode1 at 5', Barcode2 at 3'.
 pub fn match_dual_single_end(seq: &[u8], cfg: &BarcodeConfig) -> MatchResult {
+    // Pass 1: Find best eligible sample
     let mut best_dist = usize::MAX;
     let mut best_sample = usize::MAX;
     let mut is_ambiguous = false;
@@ -269,18 +295,49 @@ pub fn match_dual_single_end(seq: &[u8], cfg: &BarcodeConfig) -> MatchResult {
             }
         }
     }
+
     if best_dist == usize::MAX {
-        MatchResult::NoMatch
-    } else if is_ambiguous {
-        MatchResult::Ambiguous {
+        return MatchResult::NoMatch;
+    }
+    if is_ambiguous {
+        return MatchResult::Ambiguous {
             distance: best_dist,
+        };
+    }
+
+    // Pass 2: If min_mismatch_delta > 0, find closest distinct competitor globally across all samples
+    if cfg.min_mismatch_delta > 0 {
+        let mut runner_up_dist = usize::MAX;
+        for (i, sample) in cfg.samples.iter().enumerate() {
+            if i == best_sample {
+                continue;
+            }
+            let Some(bc2) = sample.barcode2.as_ref() else {
+                continue;
+            };
+            if let (Some(d1), Some(d2)) = (
+                barcode_distance_5p(seq, &sample.barcode1),
+                barcode_distance_3p(seq, bc2),
+            ) {
+                let d = d1 + d2;
+                if d < runner_up_dist {
+                    runner_up_dist = d;
+                }
+            }
         }
-    } else {
-        MatchResult::Match {
-            sample_index: best_sample,
-            distance: best_dist,
-            swapped: false,
+        if runner_up_dist != usize::MAX
+            && (runner_up_dist <= best_dist || runner_up_dist - best_dist < cfg.min_mismatch_delta)
+        {
+            return MatchResult::Ambiguous {
+                distance: best_dist,
+            };
         }
+    }
+
+    MatchResult::Match {
+        sample_index: best_sample,
+        distance: best_dist,
+        swapped: false,
     }
 }
 
@@ -300,6 +357,7 @@ pub fn match_dual_paired(
         OrientationMode::Both | OrientationMode::Swapped
     );
 
+    // Pass 1: Find best eligible sample (collapsing canonical/swapped per sample)
     let mut best_dist = usize::MAX;
     let mut best_sample = usize::MAX;
     let mut best_swapped = false;
@@ -309,24 +367,19 @@ pub fn match_dual_paired(
         let Some(bc2) = sample.barcode2.as_ref() else {
             continue;
         };
+        let mut sample_best: Option<(usize, bool)> = None;
+
         if allow_canonical {
             if let (Some(d1), Some(d2)) = (
                 barcode_distance_5p(r1, &sample.barcode1),
                 barcode_distance_5p(r2, bc2),
             ) {
                 if d1 <= cfg.mismatches_1 && d2 <= cfg.mismatches_2 {
-                    let d = d1 + d2;
-                    if d < best_dist {
-                        best_dist = d;
-                        best_sample = i;
-                        best_swapped = false;
-                        is_ambiguous = false;
-                    } else if d == best_dist && best_sample != i {
-                        is_ambiguous = true;
-                    }
+                    sample_best = Some((d1 + d2, false));
                 }
             }
         }
+
         if allow_swapped {
             if let (Some(d1), Some(d2)) = (
                 barcode_distance_5p(r2, &sample.barcode1),
@@ -334,31 +387,91 @@ pub fn match_dual_paired(
             ) {
                 if d1 <= cfg.mismatches_1 && d2 <= cfg.mismatches_2 {
                     let d = d1 + d2;
-                    if d < best_dist {
-                        best_dist = d;
-                        best_sample = i;
-                        best_swapped = true;
-                        is_ambiguous = false;
-                    } else if d == best_dist && best_sample != i {
-                        is_ambiguous = true;
+                    match sample_best {
+                        None => sample_best = Some((d, true)),
+                        Some((can_d, _)) => {
+                            // If swapped is strictly better, use swapped.
+                            // If tied with canonical (d == can_d), canonical is preferred!
+                            if d < can_d {
+                                sample_best = Some((d, true));
+                            }
+                        }
                     }
                 }
+            }
+        }
+
+        if let Some((d, swapped)) = sample_best {
+            if d < best_dist {
+                best_dist = d;
+                best_sample = i;
+                best_swapped = swapped;
+                is_ambiguous = false;
+            } else if d == best_dist {
+                is_ambiguous = true;
             }
         }
     }
 
     if best_dist == usize::MAX {
-        MatchResult::NoMatch
-    } else if is_ambiguous {
-        MatchResult::Ambiguous {
+        return MatchResult::NoMatch;
+    }
+    if is_ambiguous {
+        return MatchResult::Ambiguous {
             distance: best_dist,
+        };
+    }
+
+    // Pass 2: If min_mismatch_delta > 0, find closest distinct competitor globally across allowed orientations
+    if cfg.min_mismatch_delta > 0 {
+        let mut runner_up_dist = usize::MAX;
+
+        for (i, sample) in cfg.samples.iter().enumerate() {
+            if i == best_sample {
+                continue; // No sample may compete with itself!
+            }
+            let Some(bc2) = sample.barcode2.as_ref() else {
+                continue;
+            };
+
+            let mut comp_min = usize::MAX;
+
+            if allow_canonical {
+                if let (Some(d1), Some(d2)) = (
+                    barcode_distance_5p(r1, &sample.barcode1),
+                    barcode_distance_5p(r2, bc2),
+                ) {
+                    comp_min = comp_min.min(d1 + d2);
+                }
+            }
+
+            if allow_swapped {
+                if let (Some(d1), Some(d2)) = (
+                    barcode_distance_5p(r2, &sample.barcode1),
+                    barcode_distance_5p(r1, bc2),
+                ) {
+                    comp_min = comp_min.min(d1 + d2);
+                }
+            }
+
+            if comp_min < runner_up_dist {
+                runner_up_dist = comp_min;
+            }
         }
-    } else {
-        MatchResult::Match {
-            sample_index: best_sample,
-            distance: best_dist,
-            swapped: best_swapped,
+
+        if runner_up_dist != usize::MAX
+            && (runner_up_dist <= best_dist || runner_up_dist - best_dist < cfg.min_mismatch_delta)
+        {
+            return MatchResult::Ambiguous {
+                distance: best_dist,
+            };
         }
+    }
+
+    MatchResult::Match {
+        sample_index: best_sample,
+        distance: best_dist,
+        swapped: best_swapped,
     }
 }
 
@@ -370,15 +483,17 @@ pub fn assign_single(seq: &[u8], cfg: &BarcodeConfig) -> MatchResult {
     }
 }
 
-/// High-level assign for PE pair (routes to fast_exact_8bp_pe when available).
+/// High-level assign for PE pair (routes to fast_exact_8bp_pe when available and min_mismatch_delta == 0).
 pub fn assign_paired(
     r1: &[u8],
     r2: &[u8],
     cfg: &BarcodeConfig,
     orientation: OrientationMode,
 ) -> MatchResult {
-    if let Some(ref fast) = cfg.fast_exact_8bp_pe {
-        return fast.match_paired(r1, r2, orientation);
+    if cfg.min_mismatch_delta == 0 {
+        if let Some(ref fast) = cfg.fast_exact_8bp_pe {
+            return fast.match_paired(r1, r2, orientation);
+        }
     }
     match cfg.mode {
         DemuxMode::SingleBarcode => match_single(r1, cfg),

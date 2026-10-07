@@ -1,0 +1,4 @@
+total=60523000 assigned=39455648 unassigned=21067352
+orientation canonical=18606371 swapped=20849277
+python_samples=18 seqmux_samples=18
+OK: per-sample counts match

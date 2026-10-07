@@ -88,6 +88,11 @@ pub struct DemuxArgs {
     )]
     pub mismatches_2: usize,
 
+    /// Minimum confidence margin between the best eligible sample and the closest distinct competitor globally;
+    /// smaller margins are reported as ambiguous (equal-best ties remain ambiguous)
+    #[arg(long = "min-mismatch-delta", value_name = "INT", default_value_t = 0)]
+    pub min_mismatch_delta: usize,
+
     /// Keep barcode bases in the sequence (do not trim)
     #[arg(long = "keep-barcodes", visible_alias = "kbc")]
     pub keep_barcodes: bool,
@@ -281,7 +286,8 @@ fn run_demux(args: DemuxArgs) -> Result<()> {
         ));
     }
 
-    let barcodes = load_barcodes_csv(&args.barcodes, args.mismatches_1, args.mismatches_2)?;
+    let mut barcodes = load_barcodes_csv(&args.barcodes, args.mismatches_1, args.mismatches_2)?;
+    barcodes.min_mismatch_delta = args.min_mismatch_delta;
 
     let tso = match args.tso_pattern {
         Some(ref s) => Some(TsoPattern::parse(s)?),

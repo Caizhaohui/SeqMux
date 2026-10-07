@@ -124,7 +124,7 @@ impl RunStats {
             100.0 * self.unassigned as f64 / t
         );
         eprintln!(
-            "Ambiguous:          {:>12}  ({:5.2}%)",
+            "  Ambiguous subset: {:>10}  ({:5.2}%)",
             format_count(self.ambiguous),
             100.0 * self.ambiguous as f64 / t
         );

@@ -179,6 +179,7 @@ Barcode matching uses the **original 5′ sequence**, then barcodes are trimmed,
 | `--counts-only` | Count only; do not write FASTQ |
 | `--mismatches-1` | Allowed mismatches for Barcode1 |
 | `--mismatches-2` | Allowed mismatches for Barcode2 |
+| `--min-mismatch-delta <INT>` | Minimum distance margin between eligible samples (default `0`, backward compatible) |
 | `--orientation` | Dual PE: `both` (default), `canonical`, `swapped` |
 | `--no-canonicalize` | Do not rotate swapped mates to Barcode1-on-R1 |
 | `--keep-barcodes` | Do not trim barcode bases |
@@ -192,6 +193,20 @@ Barcode matching uses the **original 5′ sequence**, then barcodes are trimmed,
 | `--no-gzip` | Write plain FASTQ |
 
 Run `seqmux demux --help` for the full list.
+
+`--min-mismatch-delta` enforces a confidence margin between the best eligible
+sample and the closest distinct competitor across the entire sample set.
+The winning sample must satisfy per-end mismatch thresholds (`d1 <= max1`, `d2 <= max2`).
+When `--min-mismatch-delta > 0`, the runner-up is the closest distinct sample globally
+(which does not need to satisfy assignment thresholds). Dual-barcode scores
+are `d1 + d2`; each PE sample collapses canonical/swapped orientations before
+comparison. Canonical/swapped candidates from the same sample do not compete for
+the margin; equal scores within that sample retain canonical when both orientations
+are allowed. Equal-best scores across distinct samples remain ambiguous even at the
+backward-compatible default `0`. When `min-mismatch-delta == 0`, assignment reproduces
+existing SeqMux behavior exactly. Insufficient margins increment the ambiguous count
+and route to unassigned/discard (ambiguous reads are a tracked subset of unassigned reads,
+not a disjoint third category). Barcode `N` (UMI) positions do not contribute to distances.
 
 ## Output layout
 

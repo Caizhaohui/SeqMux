@@ -129,6 +129,8 @@ pub struct BarcodeConfig {
     pub mismatches_1: usize,
     /// Allowed mismatches for Barcode2.
     pub mismatches_2: usize,
+    /// Minimum distance margin between the best eligible sample and the closest distinct competitor globally.
+    pub min_mismatch_delta: usize,
     /// Exact 8-bp dual-barcode fast path lookup table when applicable.
     pub fast_exact_8bp_pe: Option<ExactDual8Matcher>,
 }
@@ -451,6 +453,7 @@ pub fn parse_barcodes_csv(
         mode,
         mismatches_1,
         mismatches_2,
+        min_mismatch_delta: 0,
         fast_exact_8bp_pe,
     })
 }

@@ -1,8 +1,26 @@
 # Changelog
 
-## 0.3.0 — 2026-09-25
+## 0.4.0 — 2026-10-08
 
-Release candidate. Not tagged.
+### Added
+
+- Optional `mimalloc-allocator` feature (`--features mimalloc-allocator`) delivering ~1.65x end-to-end speedup in production multi-threaded gzip runs by drastically reducing lock contention and OS memory allocation syscall overhead (Sys CPU from 14.68s to 0.52s on 2M benchmark). Standard allocator remains default.
+- `--min-mismatch-delta <INT>` confidence margin flag (default `0`). When set > 0, enforces a true global distance margin against the closest distinct sample candidate (which does not need to satisfy assignment thresholds). Collapses canonical/swapped orientations per-sample before evaluation.
+- Explicit `Ambiguous subset` tracking in demultiplexing metrics: clarifies that ambiguous reads are a tracked subset of unassigned reads (`total = assigned + unassigned`, with `ambiguous <= unassigned`).
+
+### Changed
+
+- Preserved zero-overhead `ExactDual8Matcher` fast path when `mismatches == 0` and `min-mismatch-delta == 0`.
+- Retained release profile optimization (`lto = "thin"`, `codegen-units = 16`) after rigorous A/B audit demonstrated fat LTO does not provide measurable wall clock gains while substantially increasing build times.
+- Full parity validated between standard and mimalloc builds (decompressed FASTQ files across all 72 samples are 100% byte-for-byte identical).
+
+### Validated
+
+- Real data regression on I464 (140.8M pairs) and I395 (60.5M pairs) benchmarks, with geometric lower-bound analysis on barcode hamming separation:
+  - I464 minimal barcode distance $D_{min} = 8$: with $d \le 2$, runner-up margin is mathematically $\ge 4$, meaning delta $\le 4$ yields zero rejections, with delta=5 activating 86 ambiguous reads.
+  - I395 minimal barcode distance $D_{min} = 7$: with $d \le 2$, runner-up margin is mathematically $\ge 3$, meaning delta $\le 3$ yields zero rejections, with delta=4 activating 1 ambiguous read.
+
+## 0.3.0 — 2026-09-25
 
 ### Changed
 

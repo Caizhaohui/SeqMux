@@ -186,7 +186,9 @@ fn margin_cli_help_and_invalid_values() {
         .assert()
         .success()
         .stdout(predicate::str::contains("--min-mismatch-delta <INT>"))
-        .stdout(predicate::str::contains("closest distinct competitor globally"));
+        .stdout(predicate::str::contains(
+            "closest distinct competitor globally",
+        ));
     for value in ["-1", "1.5", "18446744073709551616"] {
         Command::cargo_bin("seqmux")
             .unwrap()

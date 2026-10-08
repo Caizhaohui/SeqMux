@@ -36,7 +36,7 @@ Observed full-dataset throughput (gzip in, gzip level 1 out, 16-CPU allocation):
 
 Assignment counts match the lab Python exact demux. Representative outputs passed gzip integrity, paired counts, paired IDs, order, and canonical orientation checks. Gzip files were not shown to be byte-identical to another run. Details: `docs/REAL_DATA.md`.
 
-## Features (v0.3)
+## Features (v0.4)
 
 - Single-end and paired-end FASTQ (`.fastq` / `.fq` / `.gz`)
 - **SeqMux sample table CSV** (`SampleNumber`, `Barcode1`, `Barcode2`, …)
@@ -44,9 +44,11 @@ Assignment counts match the lab Python exact demux. Representative outputs passe
 - Single-barcode demux (Barcode1 only at R1 5′)
 - Optional `N` bases in barcodes as UMI (written to header as `rbc:`)
 - Hamming-distance matching with mismatch tolerance; ties → unassigned
+- Optional global confidence margin (`--min-mismatch-delta`) against runner-up sample
 - Quality trimming (BWA-style) and 3′ adapter trimming
 - Multi-threaded chunked pipeline with **ordered** per-sample output
 - Gzip output without shelling out to external tools
+- Optional high-throughput `mimalloc-allocator` feature (~1.65x speedup)
 - Summary TSV + stderr report
 
 ## Install
@@ -54,7 +56,11 @@ Assignment counts match the lab Python exact demux. Representative outputs passe
 ```bash
 git clone https://github.com/Caizhaohui/SeqMux.git
 cd SeqMux
+# Standard release build:
 cargo build --release
+
+# Or build with high-throughput mimalloc allocator:
+cargo build --release --features mimalloc-allocator
 # binary: target/release/seqmux
 ```
 

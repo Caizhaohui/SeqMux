@@ -5,7 +5,7 @@
 > 语言：Rust stable  
 > 文档日期：2026-09-25
 
-**当前状态：v0.3.0 RELEASED；v0.4 计划启动。** 生产配置与全量数字见 `docs/REAL_DATA.md`。第 2–8 节是到 v0.2.1 为止的历史记录，第 9 节是 v0.3.0 记录。v0.2.0、v0.2.1 与 v0.3.0 已打 tag 并正式发布。
+**当前状态：v0.4.0 INTEGRATION COMPLETE (Release Candidate)；M17 与 M18 已完成收口。** 生产配置与全量数字见 `docs/REAL_DATA.md`。第 2–8 节是到 v0.2.1 为止的历史记录，第 9 节是 v0.3.0 记录。v0.2.0、v0.2.1 与 v0.3.0 已打 tag 并正式发布。
 
 早期 Ultraplex 重写草案（`ultraplex-rs`、Ultraplex CSV、`--three-prime-only`）已废弃，不再作为实现目标。
 
@@ -1673,8 +1673,8 @@ commit 是否创建由用户当前指令决定。
 ```text
 M16 — v0.3.0 发布状态收口已完成。
 M17A — COMPLETE & CLOSED (Commit 2d9e5ba)。严谨 A/B 评测与全量 1.41 亿 pairs 验证完成：拒绝 fat LTO，保留 mimalloc 作为可选 feature。
-M17B — 重构为真正置信度余量语义（全局近邻不同样本竞争，定向合并，全量测试 107 tests 全部通过，真实数据几何证明与扫描完成）。
-M18 — PASS；correctness gate PASS；报告 docs/FQTK_BENCHMARK.md；矩阵缺口已补齐（t1/t4 与 I395 矩阵）。
+M17B — COMPLETE & CLOSED (Commit 167c320)。重构为真正置信度余量语义（全局近邻不同样本竞争，定向合并，全量测试通过，真实数据几何证明与扫描完成）。
+M18 — COMPLETE & CLOSED。v0.4.0 集成审计通过：基准回归零衰退、Standard 与 mimalloc 产出 72 个样本解压 SHA-256 100% 逐字节匹配、mismatch-delta 矩阵实测通过、SemVer bump 至 0.4.0。
 M19 — PASS；两级回归框架已落地（scripts/run_perf_regression.py 与 benchmarks/baselines/v0.3.0.tsv）；
       Level A (smoke) 与 Level B (i464_2m, i464_full, i395_full) 全量端到端验证通过，报告归档 benchmarks/perf_regression_report.tsv。
 M20 — 就绪，待启动（Distribution readiness：crates.io readiness, release binary, Bioconda）。

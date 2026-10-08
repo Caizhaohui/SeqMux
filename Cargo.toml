@@ -9,7 +9,7 @@ repository = "https://github.com/Caizhaohui/SeqMux"
 readme = "README.md"
 keywords = ["fastq", "demultiplex", "barcode", "bioinformatics", "ngs"]
 categories = ["command-line-utilities", "science"]
-rust-version = "1.74"
+rust-version = "1.85"
 
 [[bin]]
 name = "seqmux"

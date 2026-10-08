@@ -32,10 +32,33 @@ jobs:
         run: cargo fmt --check
 
       - name: clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
-      - name: test
-        run: cargo test --all
+      - name: test (standard)
+        run: cargo test --locked --all
 
-      - name: release build
-        run: cargo build --release
+      - name: test (mimalloc)
+        run: cargo test --locked --all --features mimalloc-allocator
+
+      - name: release build (standard)
+        run: cargo build --release --locked
+
+      - name: release build (mimalloc)
+        run: cargo build --release --locked --features mimalloc-allocator
+
+  msrv:
+    name: MSRV Check (1.85)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MSRV toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.85.0"
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: MSRV check
+        run: cargo check --locked --all-targets --all-features

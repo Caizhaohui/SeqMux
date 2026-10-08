@@ -520,4 +520,33 @@ mod tests {
         }
         assert!(reader.next_paired_chunk().unwrap().is_none());
     }
+
+    #[test]
+    fn test_concurrent_paired_reader_zero_chunk_reads_rejected() {
+        let r1 = write_fq(&[("read1/1", "ACGTACGT", "IIIIIIII")]);
+        let r2 = write_fq(&[("read1/2", "TGCATGCA", "IIIIIIII")]);
+        match ConcurrentPairedReader::from_paths(r1.path(), r2.path(), 0, 0, 0) {
+            Err(e) => assert!(e.to_string().contains("chunk_reads must be at least 1")),
+            Ok(_) => panic!("expected error for chunk_reads=0"),
+        }
+
+        match InputReader::concurrent_paired(r1.path(), r2.path(), 0, 0, 0) {
+            Err(e) => assert!(e.to_string().contains("chunk_reads must be at least 1")),
+            Ok(_) => panic!("expected error for chunk_reads=0"),
+        }
+    }
+
+    #[test]
+    fn test_paired_readers_same_path_rejected() {
+        let r1 = write_fq(&[("read1/1", "ACGTACGT", "IIIIIIII")]);
+        match PairedFastqReader::from_paths(r1.path(), r1.path()) {
+            Err(e) => assert!(e.to_string().contains("cannot point to the same file")),
+            Ok(_) => panic!("expected error for identical paths"),
+        }
+
+        match ConcurrentPairedReader::from_paths(r1.path(), r1.path(), 10, 0, 0) {
+            Err(e) => assert!(e.to_string().contains("cannot point to the same file")),
+            Ok(_) => panic!("expected error for identical paths"),
+        }
+    }
 }

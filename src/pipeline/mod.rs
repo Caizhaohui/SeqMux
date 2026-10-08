@@ -350,3 +350,174 @@ fn report_progress(stats: &RunStats, start: Instant) {
         elapsed
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::barcode::{BarcodeConfig, DemuxMode, OrientationMode};
+    use std::path::Path;
+    use tempfile::NamedTempFile;
+
+    fn dummy_cfg() -> ProcessConfig {
+        ProcessConfig {
+            barcodes: BarcodeConfig {
+                samples: Vec::new(),
+                mode: DemuxMode::SingleBarcode,
+                mismatches_1: 0,
+                mismatches_2: 0,
+                min_mismatch_delta: 0,
+                fast_exact_8bp_pe: None,
+            },
+            keep_barcodes: false,
+            discard_unassigned: false,
+            min_length: 0,
+            quality_cutoff_5: 0,
+            quality_cutoff_3: 0,
+            nextseq: false,
+            adapter_r1: None,
+            adapter_r2: None,
+            adapter_error_rate: 0.1,
+            min_adapter_overlap: 3,
+            tso: None,
+            phred_offset: 33,
+            orientation: OrientationMode::Both,
+            canonicalize: true,
+            counts_only: false,
+        }
+    }
+
+    fn dummy_opts<'a>(out_dir: &'a Path, input_files: &'a [&'a Path]) -> PipelineOptions<'a> {
+        PipelineOptions {
+            input_files,
+            out_dir,
+            prefix: "test",
+            gzip: false,
+            compression_level: 6,
+            force: true,
+            threads: 1,
+            chunk_reads: 100,
+            summary: None,
+            quiet: true,
+            max_reads: 0,
+            skip_reads: 0,
+        }
+    }
+
+    fn write_fq(path: &Path) {
+        std::fs::write(path, "@r1\nACGTACGT\n+\nIIIIIIII\n").unwrap();
+    }
+
+    #[test]
+    fn test_run_pipeline_rejects_zero_threads() {
+        let f = NamedTempFile::new().unwrap();
+        let input_path = f.path();
+        write_fq(input_path);
+        let input_files = [input_path];
+        let out_dir = tempfile::tempdir().unwrap();
+        let reader = InputReader::single(input_path).unwrap();
+        let cfg = dummy_cfg();
+        let mut opts = dummy_opts(out_dir.path(), &input_files);
+        opts.threads = 0;
+
+        match run_pipeline(reader, cfg, opts) {
+            Err(e) => assert!(e.to_string().contains("threads must be at least 1")),
+            Ok(_) => panic!("expected error for threads=0"),
+        }
+    }
+
+    #[test]
+    fn test_run_pipeline_rejects_zero_chunk_reads() {
+        let f = NamedTempFile::new().unwrap();
+        let input_path = f.path();
+        write_fq(input_path);
+        let input_files = [input_path];
+        let out_dir = tempfile::tempdir().unwrap();
+        let reader = InputReader::single(input_path).unwrap();
+        let cfg = dummy_cfg();
+        let mut opts = dummy_opts(out_dir.path(), &input_files);
+        opts.chunk_reads = 0;
+
+        match run_pipeline(reader, cfg, opts) {
+            Err(e) => assert!(e.to_string().contains("chunk_reads must be at least 1")),
+            Ok(_) => panic!("expected error for chunk_reads=0"),
+        }
+    }
+
+    #[test]
+    fn test_run_pipeline_rejects_invalid_compression_level() {
+        let f = NamedTempFile::new().unwrap();
+        let input_path = f.path();
+        write_fq(input_path);
+        let input_files = [input_path];
+        let out_dir = tempfile::tempdir().unwrap();
+        let cfg = dummy_cfg();
+
+        let reader0 = InputReader::single(input_path).unwrap();
+        let mut opts0 = dummy_opts(out_dir.path(), &input_files);
+        opts0.compression_level = 0;
+        match run_pipeline(reader0, cfg.clone(), opts0) {
+            Err(e) => assert!(e
+                .to_string()
+                .contains("compression_level must be between 1 and 9")),
+            Ok(_) => panic!("expected error for compression_level=0"),
+        }
+
+        let reader10 = InputReader::single(input_path).unwrap();
+        let mut opts10 = dummy_opts(out_dir.path(), &input_files);
+        opts10.compression_level = 10;
+        match run_pipeline(reader10, cfg, opts10) {
+            Err(e) => assert!(e
+                .to_string()
+                .contains("compression_level must be between 1 and 9")),
+            Ok(_) => panic!("expected error for compression_level=10"),
+        }
+    }
+
+    #[test]
+    fn test_run_pipeline_rejects_invalid_adapter_settings() {
+        let f = NamedTempFile::new().unwrap();
+        let input_path = f.path();
+        write_fq(input_path);
+        let input_files = [input_path];
+        let out_dir = tempfile::tempdir().unwrap();
+
+        // Negative adapter_error_rate
+        let mut cfg_neg = dummy_cfg();
+        cfg_neg.adapter_error_rate = -0.1;
+        let reader_neg = InputReader::single(input_path).unwrap();
+        match run_pipeline(
+            reader_neg,
+            cfg_neg,
+            dummy_opts(out_dir.path(), &input_files),
+        ) {
+            Err(e) => assert!(e.to_string().contains("adapter_error_rate")),
+            Ok(_) => panic!("expected error for negative adapter_error_rate"),
+        }
+
+        // NaN adapter_error_rate
+        let mut cfg_nan = dummy_cfg();
+        cfg_nan.adapter_error_rate = f32::NAN;
+        let reader_nan = InputReader::single(input_path).unwrap();
+        match run_pipeline(
+            reader_nan,
+            cfg_nan,
+            dummy_opts(out_dir.path(), &input_files),
+        ) {
+            Err(e) => assert!(e.to_string().contains("adapter_error_rate")),
+            Ok(_) => panic!("expected error for NaN adapter_error_rate"),
+        }
+
+        // Zero min_adapter_overlap
+        let mut cfg_zero_ov = dummy_cfg();
+        cfg_zero_ov.min_adapter_overlap = 0;
+        let reader_ov = InputReader::single(input_path).unwrap();
+        match run_pipeline(
+            reader_ov,
+            cfg_zero_ov,
+            dummy_opts(out_dir.path(), &input_files),
+        ) {
+            Err(e) => assert!(e.to_string().contains("min_adapter_overlap")),
+            Ok(_) => panic!("expected error for zero min_adapter_overlap"),
+        }
+    }
+}

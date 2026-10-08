@@ -305,13 +305,13 @@ fn test_stats_invariants_paired_end_matrix() {
                 "AAGTTTTTCCCCCCCCCCCC",
                 "IIIIIIIIIIIIIIIIIIII",
             ),
-            ("p6_short_ambig", "AAGTTTTTACCC", "IIIIIIIIIIII"),
+            ("p6_short_ambig", "AAGTTTTT", "IIIIIIII"),
             (
                 "p7_long_nomatch",
                 "NNNNNNNNCCCCCCCCCCCC",
                 "IIIIIIIIIIIIIIIIIIII",
             ),
-            ("p8_short_nomatch", "NNNNNNNNACCC", "IIIIIIIIIIII"),
+            ("p8_short_nomatch", "NNNNNNNN", "IIIIIIII"),
         ],
     );
     write_fastq(
@@ -338,69 +338,102 @@ fn test_stats_invariants_paired_end_matrix() {
                 "GGAGCCCCCCCCCCCCCCCC",
                 "IIIIIIIIIIIIIIIIIIII",
             ),
-            ("p6_short_ambig", "GGAGCCCCACCC", "IIIIIIIIIIII"),
+            ("p6_short_ambig", "GGAGCCCC", "IIIIIIII"),
             (
                 "p7_long_nomatch",
                 "NNNNNNNNCCCCCCCCCCCC",
                 "IIIIIIIIIIIIIIIIIIII",
             ),
-            ("p8_short_nomatch", "NNNNNNNNACCC", "IIIIIIIIIIII"),
+            ("p8_short_nomatch", "NNNNNNNN", "IIIIIIII"),
         ],
     );
 
     for min_length in [0, 10] {
         for threads in [1, 2] {
-            let out_dir = dir.path().join(format!("out_pe_l{min_length}_t{threads}"));
+            for counts_only in [false, true] {
+                for discard_unassigned in [false, true] {
+                    let out_dir = dir.path().join(format!(
+                        "out_pe_l{min_length}_t{threads}_c{counts_only}_d{discard_unassigned}"
+                    ));
 
-            Command::cargo_bin("seqmux")
-                .unwrap()
-                .args([
-                    "demux",
-                    "-i",
-                    fq1.to_str().unwrap(),
-                    "-I",
-                    fq2.to_str().unwrap(),
-                    "-b",
-                    bc.to_str().unwrap(),
-                    "-o",
-                    out_dir.to_str().unwrap(),
-                    "--min-length",
-                    &min_length.to_string(),
-                    "--threads",
-                    &threads.to_string(),
-                    "--mismatches-1",
-                    "4",
-                    "--mismatches-2",
-                    "4",
-                    "--no-adapter",
-                    "--no-gzip",
-                ])
-                .assert()
-                .success();
+                    let mut cmd = Command::cargo_bin("seqmux").unwrap();
+                    cmd.args([
+                        "demux",
+                        "-i",
+                        fq1.to_str().unwrap(),
+                        "-I",
+                        fq2.to_str().unwrap(),
+                        "-b",
+                        bc.to_str().unwrap(),
+                        "-o",
+                        out_dir.to_str().unwrap(),
+                        "--min-length",
+                        &min_length.to_string(),
+                        "--threads",
+                        &threads.to_string(),
+                        "--mismatches-1",
+                        "4",
+                        "--mismatches-2",
+                        "4",
+                        "--no-adapter",
+                        "--no-gzip",
+                    ]);
+                    if counts_only {
+                        cmd.arg("--counts-only");
+                    }
+                    if discard_unassigned {
+                        cmd.arg("--discard-unassigned");
+                    }
 
-            let summary_file = out_dir.join("seqmux.summary.tsv");
-            let content = fs::read_to_string(&summary_file).unwrap();
-            let (lines, map) = parse_summary_tsv(&content);
+                    cmd.assert().success();
 
-            check_invariants(&map, true);
+                    let summary_file = out_dir.join("seqmux.summary.tsv");
+                    let content = fs::read_to_string(&summary_file).unwrap();
+                    let (lines, map) = parse_summary_tsv(&content);
 
-            let total: u64 = map["total_reads"].parse().unwrap();
-            assert_eq!(total, 8);
+                    check_invariants(&map, true);
 
-            let matched_before: u64 = map["matched_before_filter"].parse().unwrap();
-            let canon: u64 = map["orientation_canonical"].parse().unwrap();
-            let swap: u64 = map["orientation_swapped"].parse().unwrap();
-            assert_eq!(matched_before, 4);
-            assert_eq!(canon, 2);
-            assert_eq!(swap, 2);
-            assert_eq!(canon + swap, matched_before);
+                    let total: u64 = map["total_reads"].parse().unwrap();
+                    assert_eq!(total, 8);
 
-            // TSV suffix check
-            let n = lines.len();
-            assert!(lines[n - 4].starts_with("matched_before_filter\t"));
-            assert!(lines[n - 3].starts_with("no_match_before_filter\t"));
-            assert!(lines[n - 2].starts_with("ambiguous_after_filter\t"));
-            assert!(lines[n - 1].starts_with("assignment_rate_before_filter\t"));
+                    let matched_before: u64 = map["matched_before_filter"].parse().unwrap();
+                    let no_match_before: u64 = map["no_match_before_filter"].parse().unwrap();
+                    let ambig_before: u64 = map["ambiguous"].parse().unwrap();
+                    let canon: u64 = map["orientation_canonical"].parse().unwrap();
+                    let swap: u64 = map["orientation_swapped"].parse().unwrap();
+                    assert_eq!(matched_before, 4);
+                    assert_eq!(canon, 2);
+                    assert_eq!(swap, 2);
+                    assert_eq!(canon + swap, matched_before);
+                    assert_eq!(ambig_before, 2);
+                    assert_eq!(no_match_before, 2);
+
+                    let too_short: u64 = map["too_short"].parse().unwrap();
+                    let assigned: u64 = map["assigned"].parse().unwrap();
+                    let unassigned: u64 = map["unassigned"].parse().unwrap();
+                    let ambig_after: u64 = map["ambiguous_after_filter"].parse().unwrap();
+
+                    if min_length == 0 {
+                        assert_eq!(too_short, 0);
+                        assert_eq!(assigned, 4);
+                        assert_eq!(unassigned, 4);
+                        assert_eq!(ambig_after, 2);
+                    } else {
+                        // min_length == 10: 4 short pairs filtered out (p2 canon, p4 swap, p6 ambig, p8 nomatch)
+                        assert_eq!(too_short, 4);
+                        assert_eq!(assigned, 2);
+                        assert_eq!(unassigned, 2);
+                        assert_eq!(ambig_after, 1);
+                    }
+
+                    // TSV suffix check
+                    let n = lines.len();
+                    assert!(lines[n - 4].starts_with("matched_before_filter\t"));
+                    assert!(lines[n - 3].starts_with("no_match_before_filter\t"));
+                    assert!(lines[n - 2].starts_with("ambiguous_after_filter\t"));
+                    assert!(lines[n - 1].starts_with("assignment_rate_before_filter\t"));
+                }
+            }
         }
     }
 }

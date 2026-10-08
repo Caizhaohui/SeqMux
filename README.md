@@ -188,26 +188,26 @@ Orientation parameters only affect dual-barcode PE; SE dual-barcode does not swa
 Barcode distance is calculated as Hamming mismatch on non-`N` positions; observed `N` bases against expected `A/C/G/T` count as mismatches. Barcode `N` positions serve as UMIs and do not contribute to mismatch scoring.
 
 In dual barcode mode, candidates must satisfy:
-- $d_1 \le \text{mismatches\_1}$
-- $d_2 \le \text{mismatches\_2}$
+- `d1 <= mismatches_1`
+- `d2 <= mismatches_2`
 
-Candidate ranking uses $d_1 + d_2$. SE single barcode mode uses $d_1$. These thresholds are per-barcode limits, not total pair mismatch ceilings; barcode indels are not allowed.
+Candidate ranking uses `d1 + d2`. SE single barcode mode uses `d1`. These thresholds are per-barcode limits, not total pair mismatch ceilings; barcode indels are not allowed.
 
 Fixed 8 bp, non-UMI, pure `A/C/G/T` dual-barcode PE with `mismatches_1=0`, `mismatches_2=0`, and `min_mismatch_delta=0` uses a dedicated exact fast path. Other configurations use the generic matching path.
 
 ### Global Confidence Margin
 
-`--min-mismatch-delta D` requires the best eligible sample to have a distance margin of at least $D$ against the closest distinct sample:
+`--min-mismatch-delta D` requires the best eligible sample to have a distance margin of at least `D` against the closest distinct sample:
 
 1. Identify the best sample satisfying per-end mismatch thresholds.
 2. If distinct samples tie for the best eligible match, mark as ambiguous directly.
-3. When $D > 0$, search the entire comparable sample pool for the closest distinct sample (which does **not** need to satisfy mismatch thresholds).
+3. When `D > 0`, search the entire comparable sample pool for the closest distinct sample (which does **not** need to satisfy mismatch thresholds).
 4. For dual-barcode PE, take the minimal distance across allowed orientations for each competitor; the candidate does not compete against its own alternative orientation.
-5. If the competitor distance is not greater than the best distance, or the distance difference is less than $D$, mark as ambiguous.
+5. If the competitor distance is not greater than the best distance, or the distance difference is less than `D`, mark as ambiguous.
 
-For example, if the best eligible sample distance is 1 and the closest competitor distance is 3, $D=2$ satisfies the margin ($3 - 1 \ge 2$). If the competitor distance is 2, the difference is $1 < 2$, resulting in an ambiguous classification. When no other comparable samples exist, no runner-up is fabricated.
+For example, if the best eligible sample distance is 1 and the closest competitor distance is 3, `D=2` satisfies the margin (`3 - 1 >= 2`). If the competitor distance is 2, the difference is `1 < 2`, resulting in an ambiguous classification. When no other comparable samples exist, no runner-up is fabricated.
 
-$D=0$ preserves legacy tie-breaking semantics. Increasing $D$ typically increases rejections but does not guarantee results will change (depending on barcode separation geometry and sequencing error rates). $D$ is a distance difference, not error probability or statistical confidence.
+`D=0` preserves legacy tie-breaking semantics. Increasing `D` typically increases rejections but does not guarantee results will change (depending on barcode separation geometry and sequencing error rates). `D` is a distance difference, not error probability or statistical confidence.
 
 ---
 
@@ -301,7 +301,7 @@ seqmux demux \
   -t 8 --compression-level 1
 ```
 
-Evaluate these parameters against your barcode Hamming separation and error profile; there is no universally optimal $D$ for all sample sheets.
+Evaluate these parameters against your barcode Hamming separation and error profile; there is no universally optimal D for all sample sheets.
 
 ### QC on the first 200,000 pairs
 
@@ -349,8 +349,8 @@ seqmux demux \
 | `-b, --barcodes` | *Required* | Sample CSV table with header |
 | `-o, --out-dir` | `.` | Output directory, created if needed |
 | `-p, --prefix` | `seqmux` | Output file prefix (no path separators allowed) |
-| `-t, --threads` | `4` | Worker thread count, must be $\ge 1$; does not equal total process threads |
-| `--chunk-reads` | `4096` | Reads/pairs per chunk, must be $\ge 1$ |
+| `-t, --threads` | `4` | Worker thread count, must be >= 1; does not equal total process threads |
+| `--chunk-reads` | `4096` | Reads/pairs per chunk, must be >= 1 |
 | `--compression-level` | `6` | Gzip compression level (`1`–`9`; `1` recommended for fast I/O) |
 | `--no-gzip` | *Off* | Write uncompressed `.fastq` files |
 | `--counts-only` | *Off* | Skip FASTQ writing; still generates summary TSV |
@@ -381,7 +381,7 @@ seqmux demux \
 | `-a, --adapter-r1` | Standard R1 adapter | 3′ adapter sequence for current R1/SE |
 | `--adapter-r2` | Standard R2 adapter | 3′ adapter sequence for current R2 |
 | `--no-adapter` | *Off* | Disable adapter trimming on both mates |
-| `--min-adapter-overlap` | `3` | Minimum adapter overlap, must be $\ge 1$ |
+| `--min-adapter-overlap` | `3` | Minimum adapter overlap, must be >= 1 |
 | `--adapter-error-rate` | `0.1` | Maximum error rate, finite number in `0.0..=1.0` |
 | `-q, --quality-cutoff-3` | `0` | 3′ Phred+33 quality cutoff |
 | `--quality-cutoff-5` | `0` | 5′ quality cutoff in standard mode |
@@ -404,7 +404,7 @@ Run `seqmux --help`, `seqmux demux --help`, or `seqmux validate --help` for full
 | PE unassigned | `<prefix>_unassigned_R1.fastq.gz`, `..._R2.fastq.gz` |
 | Summary | `<prefix>.summary.tsv` |
 
-`--no-gzip` changes extensions to `.fastq`. Sample files are created lazily upon actual write; samples with zero matching records may not produce output files. The summary TSV lists only samples with counts $> 0$, sorted by output label; missing samples in the TSV correspond to count 0.
+`--no-gzip` changes extensions to `.fastq`. Sample files are created lazily upon actual write; samples with zero matching records may not produce output files. The summary TSV lists only samples with counts > 0, sorted by output label; missing samples in the TSV correspond to count 0.
 
 Each output sample file preserves the relative input order of records/pairs, including normalized swapped pairs. To verify output consistency, compare decompressed FASTQ contents rather than requiring identical gzip file byte hashes.
 
@@ -437,14 +437,18 @@ Quality trimming, adapter trimming, and length filtering can apply to the same r
 
 The following identities are guaranteed to hold:
 
-$$\text{total\_reads} = \text{matched\_before\_filter} + \text{no\_match\_before\_filter} + \text{ambiguous}$$
-$$\text{total\_reads} = \text{assigned} + \text{unassigned} + \text{too\_short}$$
-$$\sum \text{sample counts} = \text{assigned}$$
-$$\text{ambiguous\_after\_filter} \le \text{unassigned}$$
+```text
+total_reads = matched_before_filter + no_match_before_filter + ambiguous
+total_reads = assigned + unassigned + too_short
+sum(sample counts) = assigned
+ambiguous_after_filter <= unassigned
+```
 
 For dual-barcode PE, additionally:
 
-$$\text{orientation\_canonical} + \text{orientation\_swapped} = \text{matched\_before\_filter}$$
+```text
+orientation_canonical + orientation_swapped = matched_before_filter
+```
 
 When `too_short = 0`, matching counts before and after filtering are identical. When length filtering is enabled, legacy `ambiguous` can be greater than `unassigned`. To inspect ambiguous reads within unassigned output, use `ambiguous_after_filter`.
 
@@ -582,7 +586,7 @@ The difference is `too_short` (reads filtered out by `--min-length`). Inspect `m
 `ambiguous` is counted before length filtering, whereas `unassigned` is counted after length filtering. Use `ambiguous_after_filter` to inspect the ambiguous subset remaining within unassigned reads.
 
 ### Why did results not change after increasing `min-mismatch-delta`?
-The best eligible samples may already be separated from all competing samples by a distance exceeding $D$, or the comparable sample pool may be small. Check barcode Hamming separation and error distributions rather than assuming the parameter did not take effect.
+The best eligible samples may already be separated from all competing samples by a distance exceeding D, or the comparable sample pool may be small. Check barcode Hamming separation and error distributions rather than assuming the parameter did not take effect.
 
 ### Why is the assignment rate lower than expected?
 Verify that barcodes are located at the start of reads, that `Barcode2` in the sample sheet matches the observed sequence orientation, that the library is an inline barcode library, and whether orientation is restricted to `canonical`. Compare pre-filter metrics between exact and mismatch-tolerant configurations. Avoid increasing mismatches solely to boost assignment counts.

@@ -112,11 +112,13 @@ fn process_single(
     stats.total_reads += 1;
     // Match on the original 5′ sequence before quality/adapter trim.
     let result = assign_single(&rec.sequence, &cfg.barcodes);
+    match result {
+        MatchResult::Match { .. } => stats.matched_before_filter += 1,
+        MatchResult::NoMatch => stats.no_match_before_filter += 1,
+        MatchResult::Ambiguous { .. } => stats.ambiguous += 1,
+    }
     let (sample_idx, umi, ambiguous) = apply_assignment_single(&mut rec, result, cfg);
 
-    if ambiguous {
-        stats.ambiguous += 1;
-    }
     if let Some(ref tso) = cfg.tso {
         apply_tso(&mut rec, tso);
     }
@@ -135,10 +137,10 @@ fn process_single(
     }
 
     if sample_idx.is_none() && cfg.discard_unassigned {
-        stats.record_sample_opt(sample_idx);
+        stats.record_sample_opt(sample_idx, ambiguous);
         return;
     }
-    stats.record_sample_opt(sample_idx);
+    stats.record_sample_opt(sample_idx, ambiguous);
     if cfg.counts_only {
         return;
     }
@@ -160,15 +162,19 @@ fn process_pair(
     // Match on original 5′ bases before quality/adapter trim.
     let result = assign_paired(&r1.sequence, &r2.sequence, &cfg.barcodes, cfg.orientation);
     match result {
-        MatchResult::Match { swapped: true, .. } => stats.orientation_swapped += 1,
-        MatchResult::Match { swapped: false, .. } => stats.orientation_canonical += 1,
-        _ => {}
+        MatchResult::Match { swapped: true, .. } => {
+            stats.matched_before_filter += 1;
+            stats.orientation_swapped += 1;
+        }
+        MatchResult::Match { swapped: false, .. } => {
+            stats.matched_before_filter += 1;
+            stats.orientation_canonical += 1;
+        }
+        MatchResult::NoMatch => stats.no_match_before_filter += 1,
+        MatchResult::Ambiguous { .. } => stats.ambiguous += 1,
     }
     let (sample_idx, umi, ambiguous) = apply_assignment_paired(&mut r1, &mut r2, result, cfg);
 
-    if ambiguous {
-        stats.ambiguous += 1;
-    }
     if let Some(ref tso) = cfg.tso {
         apply_tso(&mut r1, tso);
     }
@@ -192,10 +198,10 @@ fn process_pair(
     }
 
     if sample_idx.is_none() && cfg.discard_unassigned {
-        stats.record_sample_opt(sample_idx);
+        stats.record_sample_opt(sample_idx, ambiguous);
         return;
     }
-    stats.record_sample_opt(sample_idx);
+    stats.record_sample_opt(sample_idx, ambiguous);
     if cfg.counts_only {
         return;
     }

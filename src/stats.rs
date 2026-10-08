@@ -19,6 +19,9 @@ pub struct ChunkStats {
     /// Dual-barcode PE assigned in Barcode2@R1 / Barcode1@R2 orientation.
     pub orientation_swapped: u64,
     pub per_sample: Vec<u64>,
+    pub matched_before_filter: u64,
+    pub no_match_before_filter: u64,
+    pub ambiguous_after_filter: u64,
 }
 
 impl ChunkStats {
@@ -40,6 +43,9 @@ impl ChunkStats {
         self.five_prime_matched_three_prime_missing += other.five_prime_matched_three_prime_missing;
         self.orientation_canonical += other.orientation_canonical;
         self.orientation_swapped += other.orientation_swapped;
+        self.matched_before_filter += other.matched_before_filter;
+        self.no_match_before_filter += other.no_match_before_filter;
+        self.ambiguous_after_filter += other.ambiguous_after_filter;
         if self.per_sample.len() < other.per_sample.len() {
             self.per_sample.resize(other.per_sample.len(), 0);
         }
@@ -62,9 +68,14 @@ impl ChunkStats {
     }
 
     #[inline(always)]
-    pub fn record_sample_opt(&mut self, sample_id: Option<usize>) {
+    pub fn record_sample_opt(&mut self, sample_id: Option<usize>, ambiguous: bool) {
         match sample_id {
-            None => self.unassigned += 1,
+            None => {
+                self.unassigned += 1;
+                if ambiguous {
+                    self.ambiguous_after_filter += 1;
+                }
+            }
             Some(idx) => {
                 self.assigned += 1;
                 if idx >= self.per_sample.len() {
@@ -110,53 +121,58 @@ impl RunStats {
         eprintln!("SeqMux summary");
         eprintln!("────────────────────────────────────────");
         eprintln!(
-            "Total reads:        {:>12} ",
+            "Total reads:                      {:>12} ",
             format_count(self.total_reads)
         );
         eprintln!(
-            "Assigned:           {:>12}  ({:5.2}%)",
+            "Assigned:                         {:>12}  ({:5.2}%)",
             format_count(self.assigned),
             100.0 * self.assigned as f64 / t
         );
         eprintln!(
-            "Unassigned:         {:>12}  ({:5.2}%)",
+            "Unassigned:                       {:>12}  ({:5.2}%)",
             format_count(self.unassigned),
             100.0 * self.unassigned as f64 / t
         );
         eprintln!(
-            "  Ambiguous subset: {:>10}  ({:5.2}%)",
+            "  Ambiguous subset:               {:>12}  ({:5.2}%)",
+            format_count(self.ambiguous_after_filter),
+            100.0 * self.ambiguous_after_filter as f64 / t
+        );
+        eprintln!(
+            "Ambiguous (before length filter): {:>12}  ({:5.2}%)",
             format_count(self.ambiguous),
             100.0 * self.ambiguous as f64 / t
         );
         eprintln!(
-            "Quality trimmed:    {:>12}  ({:5.2}%)",
+            "Quality trimmed:                  {:>12}  ({:5.2}%)",
             format_count(self.quality_trimmed),
             100.0 * self.quality_trimmed as f64 / t
         );
         eprintln!(
-            "Adapter trimmed:    {:>12}  ({:5.2}%)",
+            "Adapter trimmed:                  {:>12}  ({:5.2}%)",
             format_count(self.adapter_trimmed),
             100.0 * self.adapter_trimmed as f64 / t
         );
         eprintln!(
-            "Length filtered:    {:>12}  ({:5.2}%)",
+            "Length filtered:                  {:>12}  ({:5.2}%)",
             format_count(self.too_short),
             100.0 * self.too_short as f64 / t
         );
         if self.five_prime_matched_three_prime_missing > 0 {
             eprintln!(
-                "5' ok / 3' missing: {:>12}",
+                "5' ok / 3' missing:               {:>12}",
                 format_count(self.five_prime_matched_three_prime_missing)
             );
         }
         if self.orientation_canonical + self.orientation_swapped > 0 {
             eprintln!(
-                "Orientation R1=BC1: {:>12}  ({:5.2}%)",
+                "Orientation R1=BC1:               {:>12}  ({:5.2}%)",
                 format_count(self.orientation_canonical),
                 100.0 * self.orientation_canonical as f64 / t
             );
             eprintln!(
-                "Orientation R1=BC2: {:>12}  ({:5.2}%)",
+                "Orientation R1=BC2:               {:>12}  ({:5.2}%)",
                 format_count(self.orientation_swapped),
                 100.0 * self.orientation_swapped as f64 / t
             );
@@ -229,6 +245,29 @@ impl RunStats {
         for (name, count) in sample_counts {
             writeln!(buf, "sample:{name}\t{count}").ok();
         }
+        writeln!(buf, "matched_before_filter\t{}", self.matched_before_filter).ok();
+        writeln!(
+            buf,
+            "no_match_before_filter\t{}",
+            self.no_match_before_filter
+        )
+        .ok();
+        writeln!(
+            buf,
+            "ambiguous_after_filter\t{}",
+            self.ambiguous_after_filter
+        )
+        .ok();
+        let assignment_rate_before_filter = if self.total_reads == 0 {
+            0.0
+        } else {
+            self.matched_before_filter as f64 / self.total_reads as f64
+        };
+        writeln!(
+            buf,
+            "assignment_rate_before_filter\t{assignment_rate_before_filter:.6}"
+        )
+        .ok();
         f.write_all(buf.as_bytes())?;
         Ok(())
     }

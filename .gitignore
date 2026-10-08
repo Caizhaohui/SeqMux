@@ -30,3 +30,9 @@ benchmarks/**/binaries/
 # Archived production-regression evidence for M17 is deliberately tracked even
 # though it contains per-run summaries.
 !benchmarks/m17_regression/**
+
+# Internal development and release documents
+NOTICE.md
+DEVELOPMENT_PLAN.md
+CHANGELOG.md
+

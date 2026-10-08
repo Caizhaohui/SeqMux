@@ -38,7 +38,7 @@ jobs:
           STAGE=seqmux-${{ github.ref_name }}-${{ matrix.target }}
           mkdir -p "$STAGE"
           cp target/${{ matrix.target }}/release/seqmux "$STAGE/"
-          cp README.md LICENSE CHANGELOG.md NOTICE.md "$STAGE/"
+          cp README.md LICENSE "$STAGE/"
           tar -czf "$STAGE.tar.gz" "$STAGE"
           echo "ASSET=$STAGE.tar.gz" >> "$GITHUB_ENV"
 
@@ -49,7 +49,7 @@ jobs:
           $stage = "seqmux-${{ github.ref_name }}-${{ matrix.target }}"
           New-Item -ItemType Directory -Path $stage | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/seqmux.exe" $stage
-          Copy-Item README.md,LICENSE,CHANGELOG.md,NOTICE.md $stage
+          Copy-Item README.md,LICENSE $stage
           Compress-Archive -Path $stage -DestinationPath "$stage.zip"
           "ASSET=$stage.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
 

@@ -271,7 +271,7 @@ cargo build --release --features mimalloc-allocator
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
+MIT License — see [LICENSE](LICENSE).
 
 ## Acknowledgements
 

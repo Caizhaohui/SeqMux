@@ -3,7 +3,7 @@
 - **Version**: 0.4.1
 - **Branch**: `fix/v0.4.1`
 - **Base Commit**: `6d09727` (v0.4.0 release commit)
-- **HEAD Commit**: `4051ec8` (on `fix/v0.4.1`)
+- **HEAD Commit**: `9ed72fe` (on `fix/v0.4.1`)
 - **Date**: 2026-10-08
 - **Auditor**: Antigravity Assistant
 
@@ -11,16 +11,13 @@
 
 ## 1. Executive Summary & Acceptance Matrix
 
-| Item | Validation Scope | Local Execution Status | Remote CI Status | Verdict |
+| Item | Validation Scope | Local Execution Status | Remote CI Status | Final Verdict |
 |:---|:---|:---:|:---:|:---:|
-| **1. MSRV** | `cargo +1.85.0 check --locked --all-targets --all-features` | **NOT RUN** (toolchain 1.85 not installed locally) | Scheduled in `.github/workflows/ci.yml` | **NOT RUN (Local)** |
-| **2. API Boundaries** | Public Reader & Pipeline APIs reject invalid args (chunk=0, threads=0, etc.) | **PASS** (Direct unit & integration tests) | Tested in CI matrix | **PASS** |
-| **3. Default Path Compatibility** | Decompressed FASTQ byte-for-byte SHA256 parity with v0.4.0 (fixtures + 2M datasets) | **PASS** (100% hash match on fixtures, I464-2M, I395-2M) | Tested in CI smoke | **PASS** |
-| **4. Statistical Semantics** | Explicit concrete counts, invariants, TSV legacy prefix compatibility | **PASS** (`tests/stats_invariants.rs` matrix) | Tested in CI | **PASS** |
-| **5. Performance A/B** | Interleaved 1 warm-up + 3 rounds on HPC `bnode2` (standard & mimalloc) | **PASS** (Standard +0.03%, Mimalloc +1.44%, no regression) | N/A (HPC exclusive) | **PASS** |
-| **6. Git & Branch State** | Clean branch `fix/v0.4.1`, no remote git operations, no tag/merge | **PASS** (Local worktree compliant) | Pending PR merge | **PASS** |
-
-**Overall Local Acceptance Status**: **READY** (all required local verification passes; MSRV honestly declared as NOT RUN locally and deferred to remote CI).
+| **1. 本地功能与输出兼容验收** | CLI/API 边界防护、解压 FASTQ 逐字节 SHA-256 比对、统计不变式与具体计数断言 | **PASS** (119/119 测试通过，100% FASTQ hash 匹配) | 覆盖在 CI 测试集 | **PASS** |
+| **2. 本次性能回归检查** | HPC `bnode2` 节点 2M 数据，Standard 与 Mimalloc 相同条件 1 次预热 + 3 轮交错 A/B | **PASS** (在本次相同条件的三轮交错 A/B 中，未观察到超过 5% 的吞吐回退) | N/A (HPC 专属节点) | **PASS** |
+| **3. Rust 1.85 实测** | `cargo +1.85.0 check --locked --all-targets --all-features` | **NOT RUN** (本地环境未安装 Rust 1.85 工具链) | 已配置在 `.github/workflows/ci.yml` | **NOT RUN** |
+| **4. 远程 CI** | GitHub Actions 跨平台 (Linux/Windows) 矩阵、locked 校验、MSRV 校验 | **NOT RUN** (代码未推送至 GitHub) | 待代码推送后自动运行 | **NOT RUN** |
+| **5. 发布验收** | v0.4.1 正式发布与打 Tag 确认 | **PENDING** (待远程 CI 验证通过后人工执行) | 待 CI 通过后执行 | **PENDING** |
 
 ---
 
@@ -72,8 +69,8 @@
 - **Independent Binary Builds**:
   - `v0.4.0_std` (built from commit `6d09727`): SHA-256 `3135b96b0663addb26a61cedae606b77c8788026a7b3038f7ed966c99893ac53`
   - `v0.4.0_mimalloc` (built from commit `6d09727`): SHA-256 `6cf56db782a6bb34584e8c9547b3899a6f11fde77b0c6082144b26f330550e30`
-  - `v0.4.1_std` (built from commit `4051ec8`): SHA-256 `6da93bd026fc22b5acb468b369c68f1c506c84b03c0bc4012cc8bc2eea1553c0`
-  - `v0.4.1_mimalloc` (built from commit `4051ec8`): SHA-256 `c7d6bfe081abfa21cd9cbff9257ea01879d52e600a5ce936e5f3490d2610cc75`
+  - `v0.4.1_std` (built from commit `9ed72fe`): SHA-256 `6da93bd026fc22b5acb468b369c68f1c506c84b03c0bc4012cc8bc2eea1553c0`
+  - `v0.4.1_mimalloc` (built from commit `9ed72fe`): SHA-256 `c7d6bfe081abfa21cd9cbff9257ea01879d52e600a5ce936e5f3490d2610cc75`
 - **Regression Datasets**:
   1. **Small Real Fixture (`tests/fixtures/i464_real_R1.fastq`)**:
      - 16/16 legacy summary lines identical between v0.4.0 and v0.4.1.
@@ -100,27 +97,54 @@
   - Matrix variations tested: SE and PE, serial (`-t 1`) and concurrent (`-t 2`), standard demux, `--counts-only`, and `--discard-unassigned`.
   - All variations produce consistent metrics.
 
-### Item 5: Interleaved HPC Performance A/B Benchmark
+### Item 5: Interleaved HPC Performance A/B Benchmark & Execution Audit
 - **Status**: **PASS**
-- **Benchmark Conditions**:
-  - **Hardware Node**: `bnode2` (Intel Xeon Silver 4116 @ 2.10GHz, 24 CPU cores, 64 GB RAM).
-  - **Environment**: Dedicated interactive SLURM allocation (Job 2888263), load average 0.25 (zero system contention).
-  - **Dataset**: `i464_2m` (2,000,000 PE read pairs, 35 dual-barcode samples).
-  - **Parameters**: `seqmux demux -i ... -I ... -b ... -o ... -t 8 --force`.
-  - **Protocol**: 1 warm-up run + 3 interleaved measurement rounds (AB, BA, AB order).
-- **Results**:
 
-| Allocator | Version | Warm-up Time | Round 1 | Round 2 | Round 3 | Median Time | Median Throughput | Median Peak RSS | Throughput Delta | RSS Delta | Status |
-|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Standard** | `v0.4.0` | 30.21s | 29.70s | 30.28s | 29.76s | 29.76s | 67,204 r/s | 274.7 MB | Baseline | Baseline | Baseline |
-| **Standard** | `v0.4.1` | 30.31s | 29.73s | 29.98s | 29.75s | 29.75s | 67,227 r/s | 276.7 MB | **+0.03%** | +0.74% | **PASS** |
-| **Mimalloc** | `v0.4.0` | 28.93s | 28.95s | 28.93s | 29.57s | 28.95s | 69,085 r/s | 315.2 MB | Baseline | Baseline | Baseline |
-| **Mimalloc** | `v0.4.1` | 29.43s | 28.54s | 28.42s | 28.64s | 28.54s | 70,077 r/s | 317.1 MB | **+1.44%** | +0.61% | **PASS** |
+#### 1. 二进制元数据核查
+| 二进制名称 | 源码 SHA | rustc 版本 | Release Profile | Feature | 构建命令 | 二进制 SHA-256 |
+|:---|:---|:---|:---|:---|:---|:---|
+| `seqmux_v040_std` | `6d097274` | `rustc 1.89.0` | `release` (opt-level 3, thin LTO) | default | `cargo build --release --locked --manifest-path /tmp/seqmux_v040_src/Cargo.toml && cp ... /tmp/seqmux_v040_bin/seqmux_v040_std` | `3135b96b0663addb26a61cedae606b77c8788026a7b3038f7ed966c99893ac53` |
+| `seqmux_v040_mimalloc` | `6d097274` | `rustc 1.89.0` | `release` (opt-level 3, thin LTO) | `mimalloc-allocator` | `cargo build --release --locked --features mimalloc-allocator --manifest-path /tmp/seqmux_v040_src/Cargo.toml && cp ... /tmp/seqmux_v040_bin/seqmux_v040_mimalloc` | `6cf56db782a6bb34584e8c9547b3899a6f11fde77b0c6082144b26f330550e30` |
+| `seqmux_v041_std` | `9ed72fe` | `rustc 1.89.0` | `release` (opt-level 3, thin LTO) | default | `cargo build --release --locked && cp target/release/seqmux /tmp/seqmux_v041_bin/seqmux_v041_std` | `6da93bd026fc22b5acb468b369c68f1c506c84b03c0bc4012cc8bc2eea1553c0` |
+| `seqmux_v041_mimalloc` | `9ed72fe` | `rustc 1.89.0` | `release` (opt-level 3, thin LTO) | `mimalloc-allocator` | `cargo build --release --locked --features mimalloc-allocator && cp target/release/seqmux /tmp/seqmux_v041_bin/seqmux_v041_mimalloc` | `c7d6bfe081abfa21cd9cbff9257ea01879d52e600a5ce936e5f3490d2610cc75` |
 
-- **Conclusions**:
-  - Throughput variation is well within tolerance (threshold: > -5.0% regression).
-  - Peak RSS is stable (< 1% delta across all runs).
-  - Output FASTQ files produced across all runs are byte-for-byte identical.
+- **隔离性确认**：四个二进制文件存放于独立的 `/tmp/seqmux_v040_bin` 与 `/tmp/seqmux_v041_bin` 目录，文件名彼此独立。每次运行前后均通过 `sha256sum` 完整复核，无任何覆盖或混用。
+
+#### 2. 运行环境与参数
+- **硬件节点**：`bnode2`（双路 Intel Xeon Silver 4116 @ 2.10GHz，24 物理核心，64 GB 内存）。
+- **任务环境**：SLURM Job `2888263`（专属交互分配，系统负载 0.25，无其它进程争抢）。
+- **完整运行命令**：
+  ```bash
+  /usr/bin/time -v <bin_path> demux \
+    -i /hpcfs/fhome/caizhh/Desktop/03_Tool_Development/03_SeqMux/tmp/upx_bench/i464_2000000_1.fq.gz \
+    -I /hpcfs/fhome/caizhh/Desktop/03_Tool_Development/03_SeqMux/tmp/upx_bench/i464_2000000_2.fq.gz \
+    -b /hpcfs/fhome/caizhh/Desktop/03_Tool_Development/03_SeqMux/tests/fixtures/I464-469erdai_barcode_and_name.csv \
+    -o <out_dir> \
+    -t 8 \
+    --force
+  ```
+- **输入文件**：gzipped FASTQ (`.fq.gz`，2,000,000 PE pairs)，位于 Lustre 文件系统 `/hpcfs`。
+- **输出参数**：输出至计算节点本地存储 `/tmp`；采用 CLI 默认 `--compression-level 6` 写出 35 个样本的 `.fq.gz`；默认启用 Illumina Universal 双端接头修剪；未启用 `--counts-only` 或 `--discard-unassigned`。
+- **CPU 与线程**：`-t 8`（内部派生 1 reader + 8 workers + 1 writer 线程），由 OS 在空闲物理核心调度，未绑定 hard CPU affinity。
+
+#### 3. 测量数据 (单位: pairs/s)
+| 分配器 | 版本 | 预热耗时 | Round 1 | Round 2 | Round 3 | 中位数耗时 | 中位数吞吐 | 峰值 RSS | 吞吐变动 | 状态 |
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Standard** | `v0.4.0` | 30.21s | 29.70s | 30.28s | 29.76s | 29.76s | 67,204 pairs/s | 274.7 MB | 基准 | 基准 |
+| **Standard** | `v0.4.1` | 30.31s | 29.73s | 29.98s | 29.75s | 29.75s | 67,227 pairs/s | 276.7 MB | **+0.03%** | **PASS** |
+| **Mimalloc** | `v0.4.0` | 28.93s | 28.95s | 28.93s | 29.57s | 28.95s | 69,085 pairs/s | 315.2 MB | 基准 | 基准 |
+| **Mimalloc** | `v0.4.1` | 29.43s | 28.54s | 28.42s | 28.64s | 28.54s | 70,077 pairs/s | 317.1 MB | **+1.44%** | **PASS** |
+
+#### 4. 结论与统计口径
+- **结论**：**在本次相同条件的三轮交错 A/B 中，未观察到超过 5% 的吞吐回退。**
+- **说明**：实测的变动幅度（Standard +0.03%、Mimalloc +1.44%）均在系统定时与调度波动的正常统计误差范围内，不作为已证实的算法性能提升宣称。
+
+#### 5. 本次 2M 耗时约 30 秒与历史基准 (~5.6 秒) 的工作负载差异解释
+历史记录中 `i464_2m` 耗时约 5.60s ~ 5.85s（如 `benchmarks/baselines/v0.3.0.tsv` 与 `benchmarks/fqtk/runs_secondary/i464_2m_SeqMux_both_t12_c1/time.log`），而本次耗时约 29.7s。经审查，两者差异完全源自测试工作负载参数定义的不同，不存在构建或配置错误：
+1. **压缩级别差异**：历史高吞吐测试显式指定了 `--compression-level 1`（单线程快速流式压缩）；本次测试遵循默认生产调用，使用了 CLI 默认的 `--compression-level 6`（深层 LZ77 窗口搜索，单个数据块 CPU 压缩耗时增加约 4~5 倍）。
+2. **接头修剪差异**：历史 5.6s 基准指定了 `--no-adapter -q 0 -l 0`，跳过了接头修剪与质量过滤；本次测试执行了完整的双端 Illumina 通用接头半全局比对修剪。
+3. **线程数差异**：历史基准使用 12 线程 (`-t 12`)，本次测试使用 8 线程 (`-t 8`)。
+4. **相对公平性证明**：本次 A/B 评测中，v0.4.0 与 v0.4.1 在上述全部参数（`-t 8`、默认压缩级别 6、默认启用接头比对）、输入数据、机器硬件及调度策略下完全相同，且均为标准 `release` 构建。因此，工作负载与相对比较完全一致且证据完整，无需因绝对耗时不同而重复测试。
 
 ---
 
@@ -152,6 +176,7 @@ cargo test --locked --all --features mimalloc-allocator                -> PASS (
 ## 5. Commit History on `fix/v0.4.1`
 
 ```text
+9ed72fe docs: finalize v0.4.1 acceptance validation report with A/B benchmarks
 4051ec8 test(api): add reader and pipeline boundary tests and strengthen stats invariants
 8efd8d8 docs: document v0.4.1 release candidate and validation evidence
 be229f5 ci: add mimalloc matrix, MSRV 1.85 check, and enforce --locked

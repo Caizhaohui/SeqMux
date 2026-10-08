@@ -261,4 +261,9 @@ MIT License — see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
 
 ## Acknowledgements
 
-Pipeline and trimming concepts were informed by demultiplexing practices in the NGS bioinformatics community, including Ultraplex.
+SeqMux builds upon and takes inspiration from outstanding tools and algorithms developed by the NGS bioinformatics and open-source communities:
+
+- **[Ultraplex](https://github.com/ulelab/ultraplex)**: Provided historical inspiration and architectural concepts for unified barcode demultiplexing and 3′ adapter trimming workflows.
+- **[fqtk](https://github.com/fulcrumgenomics/fqtk)**: Informed ideas on high-throughput Rust-based FASTQ stream processing, barcode confidence margin design (`--min-mismatch-delta`), and performance optimization patterns.
+- **[Cutadapt](https://github.com/marcelm/cutadapt)**: Established foundational principles and gold standards for high-accuracy sequencing adapter search and quality trimming algorithms.
+- **[needletail](https://github.com/onecodex/needletail)** & **[flate2](https://github.com/rust-lang/flate2)** / **[zlib-rs](https://github.com/trifectatechfoundation/zlib-rs)**: Power fast FASTQ record parsing and pure-Rust accelerated gzip decompression and compression streaming backends.

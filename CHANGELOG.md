@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.1 — 2026-10-08
+
+### Fixed
+
+- **CLI Boundary Validation**: Proactively validates parameter boundaries (`--threads >= 1`, `--chunk-reads >= 1`, `--compression-level in 1..=9`, `--adapter-error-rate in 0.0..=1.0`, `--min-adapter-overlap >= 1`, and disallows identical paths for `input` and `input2`) before starting reader threads or creating output directories. Replaced silent `.max(1)` chunk clamping and prevented empty runs/deadlocks when `--chunk-reads 0` was passed to multi-threaded readers.
+- **Statistical Invariants under Length Filtering**: Resolved edge cases where ambiguous reads filtered out by `--min-length` were counted as ambiguous without being recorded as unassigned, causing `ambiguous` to exceed `unassigned`.
+- **Refined Metrics in Summary TSV**: Appended 4 backwards-compatible metrics to `<prefix>.summary.tsv` (`matched_before_filter`, `no_match_before_filter`, `ambiguous_after_filter`, `assignment_rate_before_filter`) while preserving existing fields and per-sample rows as an exact prefix. Terminal stderr now distinguishes matching-stage ambiguity from post-filter ambiguous subsets within unassigned reads.
+
+### CI & Toolchain
+
+- **Enforced `--locked` Builds**: Added `--locked` across all CI test, lint, and release packaging jobs to prevent silent transitive dependency drift.
+- **MSRV Alignment**: Updated stated minimum supported Rust version (`rust-version`) from 1.74 to 1.85 to truthfully reflect modern transitive dependencies (`clap 4.6.x`, `assert_cmd 2.2.x`, `proptest 1.11.x`), and added dedicated MSRV 1.85 CI verification.
+- **CI Matrix Coverage**: Added dual-target testing for both standard and `mimalloc-allocator` features across Linux and Windows runners.
+
 ## 0.4.0 — 2026-10-08
 
 ### Added

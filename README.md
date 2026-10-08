@@ -59,7 +59,7 @@ Download pre-compiled binaries for Linux and Windows from the [GitHub Releases](
 
 ### Build from Source
 
-Requirements: Rust stable (1.74+).
+Requirements: Rust stable (1.85+).
 
 ```bash
 git clone https://github.com/Caizhaohui/SeqMux.git
@@ -229,6 +229,16 @@ Run `seqmux demux --help` for the full parameter reference.
 ```
 
 *Example*: Sample `Sample_01` $\to$ `seqmux_Sample_01_R1.fastq.gz` and `seqmux_Sample_01_R2.fastq.gz`.
+
+### Summary Report (`<prefix>.summary.tsv`)
+
+The run summary is output in a tab-separated format. For downstream parser compatibility, all legacy fields maintain identical names and order as an exact prefix:
+- `total_reads`, `assigned`, `unassigned`, `ambiguous`, `quality_trimmed`, `adapter_trimmed`, `too_short`, `five_prime_matched_three_prime_missing`, `orientation_canonical`, `orientation_swapped`, `match_rate`, followed by per-sample `sample:<name>` rows.
+- **Appended Metrics (v0.4.1+)**:
+  - `matched_before_filter`: Reads with an eligible sample match at the matching stage before length filtering.
+  - `no_match_before_filter`: Reads with no eligible barcode match at the matching stage.
+  - `ambiguous_after_filter`: Reads ambiguous at the matching stage that survived length filtering (satisfies `ambiguous_after_filter <= unassigned`).
+  - `assignment_rate_before_filter`: Matching-stage assignment fraction (`matched_before_filter / total_reads`).
 
 ---
 

@@ -5,7 +5,7 @@
 > 语言：Rust stable  
 > 文档日期：2026-09-25
 
-**当前状态：v0.4.0 INTEGRATION COMPLETE (Release Candidate)；M17 与 M18 已完成收口。** 生产配置与全量数字见 `docs/REAL_DATA.md`。第 2–8 节是到 v0.2.1 为止的历史记录，第 9 节是 v0.3.0 记录。v0.2.0、v0.2.1 与 v0.3.0 已打 tag 并正式发布。
+**当前状态：v0.4.1 CANDIDATE COMPLETE；CLI 参数边界防御、过滤后统计语义恒等式、CI 矩阵与 MSRV 1.85 纠正已全部收口。** 生产配置与全量数字见 `docs/REAL_DATA.md`。第 2–8 节是到 v0.2.1 为止的历史记录，第 9 节是 v0.3.0 记录。v0.2.0、v0.2.1 与 v0.3.0 已打 tag 并正式发布。
 
 早期 Ultraplex 重写草案（`ultraplex-rs`、Ultraplex CSV、`--three-prime-only`）已废弃，不再作为实现目标。
 
@@ -1677,6 +1677,7 @@ M17B — COMPLETE & CLOSED (Commit 167c320)。重构为真正置信度余量语�
 M18 — COMPLETE & CLOSED。v0.4.0 集成审计通过：基准回归零衰退、Standard 与 mimalloc 产出 72 个样本解压 SHA-256 100% 逐字节匹配、mismatch-delta 矩阵实测通过、SemVer bump 至 0.4.0。
 M19 — PASS；两级回归框架已落地（scripts/run_perf_regression.py 与 benchmarks/baselines/v0.3.0.tsv）；
       Level A (smoke) 与 Level B (i464_2m, i464_full, i395_full) 全量端到端验证通过，报告归档 benchmarks/perf_regression_report.tsv。
+v0.4.1 — COMPLETE & CLOSED (fix/v0.4.1)。CLI 参数边界防御性校验、统计语义精细化（pre-filter 指标与 post-filter 歧义子集）、CI mimalloc 矩阵与 MSRV 1.85 纠正全部落地并通过全量验证。
 M20 — 就绪，待启动（Distribution readiness：crates.io readiness, release binary, Bioconda）。
 ```
 

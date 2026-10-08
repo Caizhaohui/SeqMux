@@ -4,6 +4,10 @@
 
 It demultiplexes single-end and paired-end FASTQ using a **sample barcode table** (dual or single barcode), featuring integrated 3′ adapter and quality trimming, automatic handling of mixed insert orientations in amplicon sequencing, and ordered multi-threaded streaming I/O. No Python, Conda, pigz, or external tools required.
 
+> [!IMPORTANT]
+> **Current Scope & Application Notice**:
+> SeqMux v0.4 is specifically engineered and rigorously production-validated for **amplicon sequencing data** (e.g., multiplexed PCR amplicon libraries with inline 5′/3′ barcodes and ~50/50 mixed insert orientations). It has **not yet been benchmarked or tested on other sequencing library types** (such as WGS, RNA-seq, ChIP-seq, or single-cell/spatial platforms). Validation and presets for broader library architectures are planned for future development.
+
 ---
 
 ## What's New in v0.4

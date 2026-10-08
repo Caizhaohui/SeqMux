@@ -4,7 +4,9 @@
 
 SeqMux assigns single-end or paired-end FASTQ reads to samples based on a sample sheet CSV with headers. It supports inline barcodes, mixed paired-end insert orientations, barcode trimming, UMI extraction, Phred quality trimming, 3′ adapter trimming, and length filtering. The tool operates using streaming processing and an ordered writer; running demultiplexing does not require Python, Conda, pigz, or external demultiplexing utilities.
 
-This document corresponds to source version **0.4.1**. CLI and implementation verification is based on commit `1085fd3`, audited on 2026-10-08. For precompiled releases, please refer to GitHub Releases; source repository updates do not imply modifications to already published binary release assets of the same version.
+> [!IMPORTANT]
+> **Current Scope & Application Notice**:
+> SeqMux is specifically engineered and rigorously production-validated for **amplicon sequencing data** (e.g., multiplexed PCR amplicon libraries with inline 5′/3′ barcodes and ~50/50 mixed insert orientations). It has **not yet been benchmarked or tested on other sequencing library types** (such as WGS, RNA-seq, ChIP-seq, or single-cell/spatial platforms). Validation and presets for broader library architectures are planned for future development.
 
 ## Table of Contents
 

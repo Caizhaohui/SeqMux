@@ -62,9 +62,16 @@ pub struct PairedFastqReader {
 
 impl PairedFastqReader {
     pub fn from_paths<P: AsRef<Path>, Q: AsRef<Path>>(r1: P, r2: Q) -> Result<Self> {
+        let p1 = r1.as_ref();
+        let p2 = r2.as_ref();
+        if crate::util::paths_point_to_same_file(p1, p2) {
+            return Err(AppError::Cli(
+                "input and input2 cannot point to the same file".into(),
+            ));
+        }
         Ok(Self {
-            r1: FastqReader::from_path(r1)?,
-            r2: FastqReader::from_path(r2)?,
+            r1: FastqReader::from_path(p1)?,
+            r2: FastqReader::from_path(p2)?,
             index: 0,
         })
     }
@@ -185,8 +192,17 @@ impl ConcurrentPairedReader {
         skip_reads: u64,
         max_reads: u64,
     ) -> Result<Self> {
+        if chunk_reads < 1 {
+            return Err(AppError::Cli("chunk_reads must be at least 1".into()));
+        }
         let p1 = r1.as_ref().to_path_buf();
         let p2 = r2.as_ref().to_path_buf();
+
+        if crate::util::paths_point_to_same_file(&p1, &p2) {
+            return Err(AppError::Cli(
+                "input and input2 cannot point to the same file".into(),
+            ));
+        }
 
         if !p1.exists() {
             return Err(AppError::Io(std::io::Error::new(

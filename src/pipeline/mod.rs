@@ -37,6 +37,28 @@ pub fn run_pipeline(
     cfg: ProcessConfig,
     opts: PipelineOptions<'_>,
 ) -> Result<RunStats> {
+    if opts.threads < 1 {
+        return Err(AppError::Cli("threads must be at least 1".into()));
+    }
+    if opts.chunk_reads < 1 {
+        return Err(AppError::Cli("chunk_reads must be at least 1".into()));
+    }
+    if !(1..=9).contains(&opts.compression_level) {
+        return Err(AppError::Cli(
+            "compression_level must be between 1 and 9".into(),
+        ));
+    }
+    if !cfg.adapter_error_rate.is_finite() || !(0.0..=1.0).contains(&cfg.adapter_error_rate) {
+        return Err(AppError::Cli(
+            "adapter_error_rate must be a finite number between 0.0 and 1.0".into(),
+        ));
+    }
+    if cfg.min_adapter_overlap < 1 {
+        return Err(AppError::Cli(
+            "min_adapter_overlap must be at least 1".into(),
+        ));
+    }
+
     crate::util::validate_prefix(opts.prefix)?;
     let is_paired = match reader {
         InputReader::Paired(_) | InputReader::ConcurrentPaired(_) => true,
@@ -56,8 +78,8 @@ pub fn run_pipeline(
 
     std::fs::create_dir_all(opts.out_dir)?;
 
-    let threads = opts.threads.max(1);
-    let chunk_reads = opts.chunk_reads.max(1);
+    let threads = opts.threads;
+    let chunk_reads = opts.chunk_reads;
 
     if threads == 1 {
         return run_serial(&mut reader, &cfg, &opts, chunk_reads);

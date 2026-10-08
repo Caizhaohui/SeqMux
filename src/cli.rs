@@ -146,7 +146,11 @@ pub struct DemuxArgs {
     pub min_adapter_overlap: usize,
 
     /// Max error rate for adapter matching
-    #[arg(long = "adapter-error-rate", default_value_t = 0.1)]
+    #[arg(
+        long = "adapter-error-rate",
+        default_value_t = 0.1,
+        allow_hyphen_values = true
+    )]
     pub adapter_error_rate: f32,
 
     /// Worker threads
@@ -271,19 +275,49 @@ fn resolve_adapters(args: &DemuxArgs) -> (Option<Vec<u8>>, Option<Vec<u8>>) {
     (to_opt(&args.adapter_r1), to_opt(&args.adapter_r2))
 }
 
+impl DemuxArgs {
+    pub fn validate(&self) -> Result<()> {
+        if self.threads < 1 {
+            return Err(AppError::Cli("--threads must be at least 1".into()));
+        }
+        if self.chunk_reads < 1 {
+            return Err(AppError::Cli("--chunk-reads must be at least 1".into()));
+        }
+        if !(1..=9).contains(&self.compression_level) {
+            return Err(AppError::Cli(
+                "--compression-level must be between 1 and 9".into(),
+            ));
+        }
+        if !self.adapter_error_rate.is_finite() || !(0.0..=1.0).contains(&self.adapter_error_rate) {
+            return Err(AppError::Cli(
+                "--adapter-error-rate must be a finite number between 0.0 and 1.0".into(),
+            ));
+        }
+        if self.min_adapter_overlap < 1 {
+            return Err(AppError::Cli(
+                "--min-adapter-overlap must be at least 1".into(),
+            ));
+        }
+        if let Some(ref i2) = self.input2 {
+            if crate::util::paths_point_to_same_file(&self.input, i2) {
+                return Err(AppError::Cli(
+                    "input and input2 cannot point to the same file".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 fn run_demux(args: DemuxArgs) -> Result<()> {
+    args.validate()?;
+
     if !args.quiet {
         env_logger::Builder::from_env(
             env_logger::Env::default().default_filter_or(args.log_level.as_str()),
         )
         .format_timestamp_secs()
         .init();
-    }
-
-    if !(1..=9).contains(&args.compression_level) {
-        return Err(AppError::Cli(
-            "--compression-level must be between 1 and 9".into(),
-        ));
     }
 
     let mut barcodes = load_barcodes_csv(&args.barcodes, args.mismatches_1, args.mismatches_2)?;
